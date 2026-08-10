@@ -47,6 +47,31 @@ st.set_page_config(
     layout="wide",
 )
 
+
+def _password_gate() -> None:
+    expected = ""
+    try:
+        expected = st.secrets.get("APP_PASSWORD", "")
+    except Exception:
+        expected = ""
+    if not expected:
+        return
+    if st.session_state.get("_auth_ok"):
+        return
+    st.markdown("### Acceso")
+    st.caption("Ingresa la contraseña del equipo para continuar.")
+    pwd = st.text_input("Contraseña", type="password", key="_pwd_input", label_visibility="collapsed")
+    if pwd:
+        if pwd == expected:
+            st.session_state["_auth_ok"] = True
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta.")
+    st.stop()
+
+
+_password_gate()
+
 # ---------- Session state ----------
 
 def _init_state() -> None:
