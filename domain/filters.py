@@ -19,6 +19,8 @@ def apply_gantt_filters(
     countries: Iterable[str] | None = None,
     objective: str | None = None,
     business_unit: str | None = None,
+    date_from=None,
+    date_to=None,
 ) -> pd.DataFrame:
     if tasks is None or len(tasks) == 0:
         return tasks if tasks is not None else pd.DataFrame()
@@ -45,5 +47,16 @@ def apply_gantt_filters(
 
     if business_unit and business_unit != ALL_SENTINEL:
         df = df[df["business_unit"] == _norm(business_unit)]
+
+    if date_from is not None or date_to is not None:
+        start_col = "start_date" if "start_date" in df.columns else ("datetime" if "datetime" in df.columns else None)
+        if start_col is not None:
+            starts = pd.to_datetime(df[start_col], errors="coerce")
+            mask = starts.notna()
+            if date_from is not None:
+                mask &= starts >= pd.Timestamp(date_from)
+            if date_to is not None:
+                mask &= starts <= (pd.Timestamp(date_to) + pd.Timedelta(days=1))
+            df = df[mask]
 
     return df

@@ -30,7 +30,6 @@ from domain.data_loader import load_sla, load_workers_allowed, load_workers_pods
 from domain.filters import apply_gantt_filters
 from domain.pack import pack_all_resources_no_gaps
 from domain.pods import attach_pod_to_planned, build_email_to_pod
-from components.frappe_gantt import frappe_gantt
 from domain.payload import (
     build_planned_from_a_plan,
     build_push_payload_editable,
@@ -92,6 +91,9 @@ def _init_state() -> None:
     ss.setdefault("filter_country", [])
     ss.setdefault("filter_objective", ALL_SENTINEL)
     ss.setdefault("filter_business_unit", ALL_SENTINEL)
+    ss.setdefault("filter_date_from", None)
+    ss.setdefault("filter_date_to", None)
+    ss.setdefault("sync_anchor_date", dt.date.today())
 
 
 _init_state()
@@ -142,6 +144,8 @@ def _filtered_planned_tasks() -> pd.DataFrame:
         countries=st.session_state["filter_country"],
         objective=st.session_state["filter_objective"],
         business_unit=st.session_state["filter_business_unit"],
+        date_from=st.session_state["filter_date_from"],
+        date_to=st.session_state["filter_date_to"],
     )
 
 
@@ -179,6 +183,8 @@ def _prepare_aplan_gantt_view(ap: pd.DataFrame) -> pd.DataFrame:
         countries=st.session_state["filter_country"],
         objective=st.session_state["filter_objective"],
         business_unit=st.session_state["filter_business_unit"],
+        date_from=st.session_state["filter_date_from"],
+        date_to=st.session_state["filter_date_to"],
     )
     return filtered.sort_values(["resource_id", "start_date", "id"]).reset_index(drop=True)
 
@@ -341,7 +347,20 @@ with st.sidebar:
         key="filter_business_unit",
     )
 
+    col_df, col_dt = st.columns(2)
+    with col_df:
+        st.date_input("Desde", value=st.session_state["filter_date_from"], key="filter_date_from", format="YYYY-MM-DD")
+    with col_dt:
+        st.date_input("Hasta", value=st.session_state["filter_date_to"], key="filter_date_to", format="YYYY-MM-DD")
+
     st.markdown("")
+    st.date_input(
+        "Fecha ancla del cronograma",
+        value=st.session_state["sync_anchor_date"],
+        key="sync_anchor_date",
+        format="YYYY-MM-DD",
+        help="Desde qué fecha se planifica al sincronizar con ProjectCor.",
+    )
 
     def _do_sync():
         try:
@@ -363,7 +382,10 @@ with st.sidebar:
                 progress_msg.write("Calculando SLA y cronograma…")
                 progress_bar.progress(100)
                 a = add_sla_to_a(a, refs["sla"])
-                res = schedule_tasks_from_today(a, refs["workers_allowed"])
+                res = schedule_tasks_from_today(
+                    a, refs["workers_allowed"],
+                    anchor_date=st.session_state.get("sync_anchor_date") or dt.date.today(),
+                )
                 status_box.update(label=f"Sincronización lista · {len(res['a_plan'])} tareas", state="complete")
             ap_new = res["a_plan"]
             st.session_state["a_plan"] = ap_new
@@ -660,83 +682,18 @@ if active_tab == "Cronograma editable":
             if picked:
                 st.session_state["selected_id"] = picked
 
-# ---- Gantt interactivo (Frappe) ----
+# ---- Gantt interactivo (Plotly, mismo motor que Cronograma editable) ----
 elif active_tab == "Gantt interactivo":
     pt_view = _filtered_planned_tasks()
     if pt_view.empty:
-        st.info("Sincroniza y dibuja el cronograma para ver el Gantt interactivo.")
+        st.info("Sincroniza y dibuja el cronograma para ver el Gantt.")
     else:
         refs = _load_reference_data()
         email_to_pod = build_email_to_pod(st.session_state["a_plan"], refs["workers_pods"])
         pt_pod = attach_pod_to_planned(pt_view, email_to_pod)
         pt_pod = pt_pod.sort_values(["pod", "resource_name", "start_date", "id"]).reset_index(drop=True)
-
-        col_view, col_hint = st.columns([1, 3])
-        with col_view:
-            view_mode = st.selectbox(
-                "Escala",
-                options=["Day", "Week", "Month"],
-                index=1,
-                key="frappe_view_mode",
-            )
-        with col_hint:
-            st.caption(
-                "Arrastra las barras para mover fechas · redimensiona los bordes para cambiar duración. "
-                "Los cambios se aplican automáticamente al plan en memoria; usa **Publicar** para enviarlos a ProjectCor."
-            )
-
-        start_dt = pd.to_datetime(pt_pod["start_date"], errors="coerce")
-        dur = pd.to_numeric(pt_pod["duration"], errors="coerce").fillna(TASK_FALLBACK_HOURS)
-        end_dt = start_dt + pd.to_timedelta(dur, unit="h")
-
-        tasks_payload = []
-        for _, row in pt_pod.assign(_start=start_dt, _end=end_dt).iterrows():
-            if pd.isna(row["_start"]) or pd.isna(row["_end"]):
-                continue
-            title = str(row.get("text") or "")[:80]
-            resource = str(row.get("resource_name") or row.get("resource_id") or "")
-            pod = str(row.get("pod") or "Sin pod")
-            tasks_payload.append({
-                "id": str(row["id"]),
-                "name": f"[{pod} · {resource.split('@')[0]}] {title}",
-                "start": row["_start"].strftime("%Y-%m-%d"),
-                "end": row["_end"].strftime("%Y-%m-%d"),
-                "progress": 0,
-                "custom_class": f"pod-{pod.replace(' ', '_')}",
-            })
-
-        boundaries: list[int] = []
-        prev_pod = None
-        for i, row in pt_pod.iterrows():
-            cur = row.get("pod") or "Sin pod"
-            if prev_pod is not None and cur != prev_pod:
-                boundaries.append(i)
-            prev_pod = cur
-
-        drag_event = frappe_gantt(
-            tasks=tasks_payload,
-            view_mode=view_mode,
-            pod_boundaries=boundaries,
-            key="frappe_gantt_main",
-        )
-
-        last_ts = st.session_state.get("_frappe_last_ts", 0)
-        if drag_event and drag_event.get("type") == "date_change" and drag_event.get("ts", 0) > last_ts:
-            st.session_state["_frappe_last_ts"] = drag_event["ts"]
-            tid = str(drag_event["id"])
-            new_start = pd.to_datetime(drag_event["start"], errors="coerce")
-            new_end = pd.to_datetime(drag_event["end"], errors="coerce")
-            if pd.notna(new_start) and pd.notna(new_end):
-                pt_all = st.session_state["planned_tasks"].copy()
-                pt_all["id"] = pt_all["id"].astype(str)
-                mask = pt_all["id"] == tid
-                if mask.any():
-                    pt_all.loc[mask, "start_date"] = new_start.strftime("%Y-%m-%d %H:%M")
-                    new_dur = max(0.25, (new_end - new_start).total_seconds() / 3600.0)
-                    pt_all.loc[mask, "duration"] = float(new_dur)
-                    st.session_state["planned_tasks"] = pt_all
-                    _log(f"Frappe drag: tarea {tid} → {new_start:%Y-%m-%d} ({new_dur:.1f}h)")
-                    st.rerun()
+        st.caption("Vista Gantt agrupada por cápsula (pod). El drag-and-drop no está disponible en Plotly; edita fechas en el tab **Cronograma editable**.")
+        _plot_gantt(pt_pod, key="gantt_interactivo")
 
 # ---- Plan original ----
 elif active_tab == "Plan original":
@@ -895,6 +852,8 @@ elif active_tab == "Estadísticas":
             countries=st.session_state["filter_country"],
             objective=st.session_state["filter_objective"],
             business_unit=st.session_state["filter_business_unit"],
+            date_from=st.session_state["filter_date_from"],
+            date_to=st.session_state["filter_date_to"],
         )
 
         col1, col2 = st.columns(2)
@@ -938,15 +897,28 @@ elif active_tab == "Estadísticas":
                 st.plotly_chart(fig, key="stats_emails")
 
         with col4:
-            st.markdown("**Duración (h) por tipo + skill**")
+            st.markdown("**Distribución de duración (h) por tipo + skill**")
             d = df.copy()
             d["combo"] = d["combo"].replace({"NA | NA": "SIN CLASIFICAR", "": "SIN CLASIFICAR"})
             d = d[d["dur_h"].notna() & (d["dur_h"] > 0)]
             if d.empty:
                 st.info("Sin datos.")
             else:
-                fig = px.histogram(d, x="dur_h", color="combo", color_discrete_sequence=BRAND_PALETTE, barmode="overlay")
-                fig.update_layout(height=380, xaxis_title="Duración (h)", yaxis_title="# tareas", margin=dict(l=0, r=0, t=10, b=10))
+                order = d.groupby("combo")["dur_h"].median().sort_values().index.tolist()
+                fig = px.box(
+                    d, x="combo", y="dur_h",
+                    color="combo",
+                    color_discrete_sequence=BRAND_PALETTE,
+                    category_orders={"combo": order},
+                    points="outliers",
+                )
+                fig.update_layout(
+                    height=380,
+                    xaxis_title="", yaxis_title="Duración (h)",
+                    margin=dict(l=0, r=0, t=10, b=80),
+                    showlegend=False,
+                )
+                fig.update_xaxes(tickangle=-30)
                 st.plotly_chart(fig, key="stats_duration")
 
 # ---- Notas por país ----

@@ -49,12 +49,13 @@ TIGO_ERR = "#C62828"
 TIGO_OK = "#1A7F3C"
 
 STATUS_COLORS = {
-    "nueva": TIGO_CYAN,
-    "en_proceso": TIGO_YELLOW,
-    "en_revision": TIGO_MAGENTA,
-    "en_diseno": TIGO_ORANGE,
-    "suspendida": "#767676",
-    "finalizada": TIGO_GREEN,
+    "nueva": "#0DA0C0",
+    "en_proceso": "#F0AD32",
+    "en_revision": "#9B5AB9",
+    "ajustes": "#E21354",
+    "en_diseno": "#E21354",
+    "suspendida": "#585858",
+    "finalizada": "#11E478",
 }
 DEFAULT_STATUS_COLOR = "#9E9E9E"
 
