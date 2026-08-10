@@ -1,0 +1,177 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  --blue-900:#00005A; --blue-500:#001EB4; --blue-400:#0026E5; --blue-50:#E6F1FF;
+  --cyan:#44C8F5;
+  --green:#00F52D; --yellow:#FFBE00; --magenta:#FF0064; --orange:#FB561E; --lime:#BEFF00;
+  --wa:#25D366;
+  --gray-100:#F5F5F5; --gray-200:#EBEBEB; --gray-300:#D1D1D1;
+  --gray-400:#888; --gray-500:#9E9E9E; --gray-600:#767676;
+  --err:#C62828; --ok:#1A7F3C; --bg-err:#FFEBEE; --bg-ok:#E8F5E9;
+  --font:'DM Sans','Segoe UI',sans-serif;
+  --r-input:16px; --r-card:20px; --r-modal:24px; --r-pill:9999px;
+  --focus:0 0 0 3px rgba(68,200,245,.4);
+  --sh-sm:0 1px 4px rgba(0,0,0,.08);
+  --sh-md:0 4px 16px rgba(0,0,0,.10);
+}
+
+html, body, [class*="css"], .stApp, .stMarkdown, .stButton, .stTextInput,
+.stSelectbox, .stMultiSelect, .stDateInput, .stTextArea, .stDataFrame,
+div[data-testid="stSidebar"], div[data-testid="stSegmentedControl"] {
+  font-family: var(--font) !important;
+}
+.stApp { background: #F4F6FA; color: #000; }
+.block-container { padding-top: 4.25rem; padding-bottom: 2.5rem; max-width: 1440px; }
+
+header[data-testid="stHeader"] { background: transparent !important; box-shadow: none !important; }
+header[data-testid="stHeader"]::before { display: none !important; }
+
+.tigo-topbar {
+  position: relative; z-index: 1;
+  background: var(--blue-500);
+  color: #fff;
+  padding: 22px 28px;
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-md);
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+.tigo-topbar::before {
+  content:''; position:absolute; top:0; right:0; width:38%; height:100%;
+  background: var(--blue-900);
+  clip-path: polygon(14% 0, 100% 0, 100% 100%, 0% 100%);
+}
+.tigo-topbar::after {
+  content:''; position:absolute; top:0; right:0; width:22%; height:100%;
+  background: rgba(0,0,5,.45);
+  clip-path: polygon(22% 0, 100% 0, 100% 100%, 0% 100%);
+}
+.tigo-topbar__inner {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+}
+.tigo-brand { display: flex; align-items: center; gap: 14px; }
+.tigo-brand__logo { display:flex; align-items:center; }
+.tigo-brand__logo svg { height: 30px; width: auto; }
+.tigo-brand__sep { width:1px; height:32px; background: rgba(255,255,255,.22); }
+.tigo-brand__text { display:flex; flex-direction:column; }
+.tigo-brand__eyebrow {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--cyan); margin-bottom: 2px;
+}
+.tigo-brand__title { font-weight: 900; font-size: 18px; line-height: 1.1; color:#fff; letter-spacing: -0.2px; }
+.tigo-badge {
+  display: inline-flex; align-items:center; gap:6px;
+  font-weight: 700; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 6px 12px; border-radius: var(--r-pill);
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.28);
+  color: #fff;
+}
+.tigo-badge__go svg { height:14px; width:auto; }
+
+.tigo-section { margin: 8px 2px 12px 2px; }
+.tigo-section__ey {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--cyan); margin-bottom: 4px;
+}
+.tigo-section__title { font-weight: 800; font-size: 20px; color: var(--blue-900); letter-spacing: -0.3px; }
+.tigo-section__hint  { font-size: 13px; color: var(--gray-600); margin-top: 2px; }
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius: var(--r-card) !important;
+  border: 1px solid #E4E8F0 !important;
+  box-shadow: var(--sh-sm);
+  background: #fff;
+}
+
+div[data-testid="stSidebar"] .stButton > button,
+div[data-testid="stSidebar"] .stDownloadButton > button {
+  width: 100%;
+  min-height: 44px;
+  border-radius: var(--r-pill) !important;
+  font-family: var(--font) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  padding: 0 24px !important;
+  background: transparent !important;
+  color: var(--blue-500) !important;
+  border: 2px solid var(--blue-500) !important;
+  transition: background .15s, box-shadow .15s;
+}
+div[data-testid="stSidebar"] .stButton > button:hover,
+div[data-testid="stSidebar"] .stDownloadButton > button:hover {
+  background: var(--blue-50) !important;
+}
+div[data-testid="stSidebar"] .stButton > button:focus-visible,
+div[data-testid="stSidebar"] .stDownloadButton > button:focus-visible {
+  box-shadow: var(--focus) !important;
+  outline: none !important;
+}
+div[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+  background: var(--blue-500) !important;
+  color: #fff !important;
+  border-color: var(--blue-500) !important;
+}
+div[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+  background: var(--blue-400) !important;
+  border-color: var(--blue-400) !important;
+}
+
+div[data-testid="stMain"] .stButton > button {
+  min-height: 44px;
+  border-radius: var(--r-pill) !important;
+  font-family: var(--font) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  padding: 0 28px !important;
+  background: transparent;
+  color: var(--blue-500);
+  border: 2px solid var(--blue-500);
+}
+div[data-testid="stMain"] .stButton > button:hover { background: var(--blue-50); }
+div[data-testid="stMain"] .stButton > button[kind="primary"] {
+  background: var(--blue-500) !important; color:#fff !important; border-color:var(--blue-500) !important;
+}
+div[data-testid="stMain"] .stButton > button[kind="primary"]:hover {
+  background: var(--blue-400) !important; border-color: var(--blue-400) !important;
+}
+
+section[data-testid="stSidebar"] > div { background: #FFFFFF; border-right: 1px solid #E4E8F0; }
+section[data-testid="stSidebar"] .stMarkdown h3 {
+  font-family: var(--font); font-weight: 800; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--blue-500); margin-top: 6px; margin-bottom: 4px;
+}
+
+div[data-baseweb="input"] > div,
+div[data-baseweb="select"] > div,
+div[data-baseweb="textarea"] > div {
+  border-radius: var(--r-input) !important;
+  border-color: var(--gray-300) !important;
+  font-family: var(--font) !important;
+}
+div[data-baseweb="input"] input,
+div[data-baseweb="select"] input,
+div[data-baseweb="textarea"] textarea {
+  font-family: var(--font) !important;
+  font-size: 14px !important;
+}
+
+div[data-testid="stSegmentedControl"] label {
+  border-radius: var(--r-pill) !important;
+  font-weight: 700 !important;
+  font-family: var(--font) !important;
+}
+
+.logbox {
+  background:#FFFFFF; border:1px solid #E4E8F0; border-radius: var(--r-card);
+  padding: 14px 18px; font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px; white-space: pre-wrap; color: #333;
+  box-shadow: var(--sh-sm);
+}
+
+div[data-testid="stAlert"] {
+  border-radius: var(--r-card) !important;
+  border: none !important;
+}

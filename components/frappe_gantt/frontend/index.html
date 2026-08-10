@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css" />
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<style>
+  :root {
+    --tigo-blue: #001EB4;
+    --tigo-blue-900: #00005A;
+    --tigo-cyan: #44C8F5;
+    --tigo-bg: #F4F6FA;
+    --text: #000;
+    --muted: #767676;
+    --pod-line: 4px;
+  }
+  html, body { margin: 0; padding: 0; background: #fff; color: var(--text);
+    font-family: 'DM Sans','Segoe UI',sans-serif; }
+  #wrap { padding: 10px; overflow: auto; }
+  #empty { padding: 20px; color: var(--muted); }
+  .toolbar { display:flex; gap:8px; align-items:center; margin: 4px 6px 12px 6px; font-size: 12px; color: var(--muted); }
+  .toolbar b { color: var(--tigo-blue); font-weight: 700; }
+  .gantt .bar { fill: var(--tigo-blue); }
+  .gantt .bar-progress { fill: var(--tigo-cyan); }
+  .gantt .bar-label { fill: #fff; font-weight: 600; }
+  .gantt .row-line { stroke: #EBEBEB; }
+  .gantt .row-line.pod-boundary { stroke: var(--tigo-blue-900); stroke-width: var(--pod-line); }
+  .gantt .today-highlight { fill: rgba(255,190,0,.18); }
+  .gantt .grid-header { fill: var(--tigo-bg); }
+  .gantt .lower-text, .gantt .upper-text { fill: var(--tigo-blue-900); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="wrap"><div class="toolbar"><span>Arrastra las barras para mover fechas · redimensiona los bordes para cambiar duración.</span></div><svg id="gantt"></svg></div>
+<script>
+(function () {
+  function sendValue(value) {
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: 'streamlit:setComponentValue',
+      dataType: 'json',
+      value: value,
+    }, '*');
+  }
+  function setHeight(h) {
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: 'streamlit:setFrameHeight',
+      height: h,
+    }, '*');
+  }
+  function ready() {
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: 'streamlit:componentReady',
+      apiVersion: 1,
+    }, '*');
+  }
+
+  function paintPodBoundaries(boundaries) {
+    if (!boundaries || !boundaries.length) return;
+    const rows = document.querySelectorAll('.gantt .row-line');
+    boundaries.forEach(function (idx) {
+      if (rows[idx]) rows[idx].classList.add('pod-boundary');
+    });
+  }
+
+  function render(args) {
+    const tasks = args.tasks || [];
+    const view_mode = args.view_mode || 'Week';
+    const pod_boundaries = args.pod_boundaries || [];
+    const wrap = document.getElementById('wrap');
+    // Reset SVG on every render
+    let svg = document.getElementById('gantt');
+    if (svg) svg.remove();
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('id', 'gantt');
+    wrap.appendChild(svg);
+
+    if (!tasks.length) {
+      wrap.insertAdjacentHTML('beforeend', '<div id="empty">Sin tareas para mostrar con los filtros actuales.</div>');
+      setHeight(160);
+      return;
+    }
+
+    // eslint-disable-next-line no-new
+    new Gantt('#gantt', tasks, {
+      view_mode: view_mode,
+      bar_height: 22,
+      padding: 16,
+      language: 'es',
+      readonly_progress: true,
+      on_date_change: function (task, start, end) {
+        sendValue({
+          type: 'date_change',
+          id: String(task.id),
+          start: start.toISOString(),
+          end: end.toISOString(),
+          ts: Date.now(),
+        });
+      },
+      on_click: function (task) {
+        sendValue({ type: 'click', id: String(task.id), ts: Date.now() });
+      },
+    });
+
+    setTimeout(function () {
+      paintPodBoundaries(pod_boundaries);
+      const svgEl = document.getElementById('gantt');
+      const bb = svgEl ? svgEl.getBoundingClientRect() : null;
+      const h = bb ? Math.min(2200, Math.ceil(bb.height) + 90) : (120 + tasks.length * 38);
+      setHeight(h);
+    }, 60);
+  }
+
+  window.addEventListener('message', function (e) {
+    if (!e.data || e.data.type !== 'streamlit:render') return;
+    render(e.data.args || {});
+  });
+  ready();
+  setHeight(200);
+})();
+</script>
+</body>
+</html>
