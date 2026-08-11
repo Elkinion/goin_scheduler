@@ -25,7 +25,7 @@ from domain.config import (
     TZ_LOCAL,
     WORK_HOURS_RATIO,
 )
-from domain.country import build_country_choices, extract_country_series
+from domain.country import COUNTRY_CATALOG, build_country_choices, extract_country_series
 from domain.data_loader import load_sla, load_workers_allowed, load_workers_pods
 from domain.filters import apply_gantt_filters
 from domain.pack import pack_all_resources_no_gaps
@@ -337,6 +337,127 @@ def _to_excel_bytes(df: pd.DataFrame) -> bytes:
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="tasks")
     return buf.getvalue()
+
+
+# ---------- Tabla estandar (8 columnas) ----------
+
+DISPLAY_COLS = [
+    "Cliente", "Proyecto", "Tarea", "ID de tarea",
+    "Estado", "Fecha de inicio", "Finalización", "Categoría",
+]
+
+
+def _to_client(cc) -> str:
+    s = str(cc or "").strip().upper()
+    if not s:
+        return ""
+    return f"tigo {COUNTRY_CATALOG.get(s, s)}"
+
+
+def _build_display_from_planned(pt: pd.DataFrame) -> pd.DataFrame:
+    if pt is None or pt.empty:
+        return pd.DataFrame(columns=DISPLAY_COLS)
+    d = pt.copy()
+    starts = pd.to_datetime(d.get("start_date", ""), errors="coerce")
+    durs = pd.to_numeric(d.get("duration", TASK_FALLBACK_HOURS), errors="coerce").fillna(TASK_FALLBACK_HOURS)
+    ends = starts + pd.to_timedelta(durs, unit="h")
+    return pd.DataFrame({
+        "Cliente": d.get("pais", pd.Series([""] * len(d))).fillna("").map(_to_client),
+        "Proyecto": d.get("business_unit", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Tarea": d.get("text", pd.Series([""] * len(d))).fillna("").astype(str),
+        "ID de tarea": d.get("id", pd.Series([""] * len(d))).astype(str),
+        "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Fecha de inicio": d.get("start_date", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Finalización": ends.dt.strftime("%Y-%m-%d %H:%M").fillna(""),
+        "Categoría": d.get("typeTask_name", pd.Series([""] * len(d))).fillna("").astype(str),
+    })
+
+
+def _build_display_from_aplan(ap: pd.DataFrame) -> pd.DataFrame:
+    if ap is None or ap.empty:
+        return pd.DataFrame(columns=DISPLAY_COLS)
+    d = ap.copy()
+    tags = d.get("tag", pd.Series([""] * len(d))).fillna("").astype(str)
+    countries = extract_country_series(tags)
+    return pd.DataFrame({
+        "Cliente": countries.map(_to_client),
+        "Proyecto": d.get("project_name", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Tarea": d.get("title", pd.Series([""] * len(d))).fillna("").astype(str),
+        "ID de tarea": d.get("id", pd.Series([""] * len(d))).astype(str),
+        "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Fecha de inicio": d.get("datetime", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Finalización": d.get("deadline", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Categoría": d.get("typeTask_name", pd.Series([""] * len(d))).fillna("").astype(str),
+    })
+
+
+_MULTISELECT_COLS = ("Cliente", "Estado", "Categoría")
+
+
+def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    with st.expander("Filtros de columna", expanded=False):
+        row1 = st.columns(4)
+        row2 = st.columns(4)
+        widgets = list(row1) + list(row2)
+        active: dict[str, tuple[str, object]] = {}
+        for i, col in enumerate(DISPLAY_COLS):
+            with widgets[i]:
+                if col in _MULTISELECT_COLS:
+                    opts = sorted({x for x in df[col].dropna().astype(str).tolist() if x.strip()})
+                    sel = st.multiselect(col, opts, default=[], key=f"{key_prefix}_flt_{col}", placeholder="Todos")
+                    if sel:
+                        active[col] = ("in", sel)
+                else:
+                    val = st.text_input(col, key=f"{key_prefix}_flt_{col}", placeholder="Buscar…")
+                    if val:
+                        active[col] = ("contains", val)
+    out = df
+    for col, (kind, val) in active.items():
+        if kind == "in":
+            out = out[out[col].astype(str).isin(val)]
+        else:
+            out = out[out[col].astype(str).str.contains(str(val), case=False, na=False, regex=False)]
+    return out
+
+
+def _style_by_status(df: pd.DataFrame):
+    def _row_style(row):
+        s = str(row.get("Estado", "")).strip().lower().replace(" ", "_")
+        color = STATUS_COLORS.get(s, "")
+        if not color or not color.startswith("#") or len(color) < 7:
+            return [""] * len(row)
+        try:
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+        except ValueError:
+            return [""] * len(row)
+        return [f"background-color: rgba({r},{g},{b},0.18); color:#111;"] * len(row)
+    return df.style.apply(_row_style, axis=1)
+
+
+def _render_task_table(df_display: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    filtered = _column_filters(df_display, key_prefix)
+    if filtered is None or filtered.empty:
+        st.info("No hay tareas que coincidan con los filtros.")
+        return filtered if filtered is not None else pd.DataFrame(columns=DISPLAY_COLS)
+    st.dataframe(
+        _style_by_status(filtered),
+        hide_index=True,
+        width="stretch",
+        height=520,
+        column_config={
+            "Cliente": st.column_config.TextColumn(width="small"),
+            "Proyecto": st.column_config.TextColumn(width="medium"),
+            "Tarea": st.column_config.TextColumn(width="large"),
+            "ID de tarea": st.column_config.TextColumn(width="small"),
+            "Estado": st.column_config.TextColumn(width="small"),
+            "Fecha de inicio": st.column_config.TextColumn(width="small"),
+            "Finalización": st.column_config.TextColumn(width="small"),
+            "Categoría": st.column_config.TextColumn(width="small"),
+        },
+    )
+    return filtered
 
 
 # ---------- Global styles (Tigo Design System v2) ----------
@@ -710,67 +831,22 @@ if active_tab == "Cronograma editable":
     pt_view = _filtered_planned_tasks()
     _plot_gantt(pt_view, key="gantt_main")
 
-    st.caption("Ajusta fechas, duración o colaborador en la tabla. Marca 'Eliminar' para quitar la tarea del cronograma (vuelve al sincronizar).")
+    st.caption("Tabla del cronograma actual. Usa 'Filtros de columna' para buscar por cliente, proyecto, tarea, etc.")
     if pt_view.empty:
-        st.info("Sincroniza y dibuja el cronograma para editar tareas aquí.")
+        st.info("Sincroniza y dibuja el cronograma para ver las tareas aquí.")
     else:
-        edit_df = pt_view[[
-            "id", "text", "resource_id", "start_date", "duration", "pais", "objetivo", "status",
-        ]].copy()
-        edit_df["Eliminar"] = False
-        edit_df["duration"] = pd.to_numeric(edit_df["duration"], errors="coerce").fillna(TASK_FALLBACK_HOURS).astype(float)
+        disp = _build_display_from_planned(pt_view)
+        filtered = _render_task_table(disp, key_prefix="tbl_plan")
 
-        edited = st.data_editor(
-            edit_df,
-            hide_index=True,
-            key="editor_main",
-            num_rows="fixed",
-            column_config={
-                "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
-                "text": st.column_config.TextColumn("Tarea", disabled=True, width="medium"),
-                "resource_id": st.column_config.TextColumn("Colaborador (email)"),
-                "start_date": st.column_config.TextColumn("Inicio (YYYY-MM-DD HH:MM)"),
-                "duration": st.column_config.NumberColumn("Duración (h)", min_value=0.25, step=0.25, format="%.2f"),
-                "pais": st.column_config.TextColumn("País", disabled=True, width="small"),
-                "objetivo": st.column_config.TextColumn("Objetivo", disabled=True),
-                "status": st.column_config.TextColumn("Estado", disabled=True, width="small"),
-                "Eliminar": st.column_config.CheckboxColumn("Quitar"),
-            },
-        )
-
-        col_apply, col_pick = st.columns([1, 3])
-        with col_apply:
-            if st.button("Aplicar cambios", icon=":material/save:"):
-                original = st.session_state["planned_tasks"].copy()
-                original["id"] = original["id"].astype(str)
-                edited["id"] = edited["id"].astype(str)
-
-                to_drop_ids = set(edited.loc[edited["Eliminar"] == True, "id"])
-                edits = edited[edited["Eliminar"] != True].set_index("id")
-
-                merged = original.set_index("id")
-                for col in ("resource_id", "start_date", "duration"):
-                    merged.loc[edits.index, col] = edits[col].values
-                merged = merged[~merged.index.isin(to_drop_ids)].reset_index()
-
-                resources = st.session_state["planned_resources"]
-                if not resources.empty:
-                    merged = merged.drop(columns=["resource_name"], errors="ignore").merge(
-                        resources, on="resource_id", how="left"
-                    )
-                    merged["resource_name"] = merged["resource_name"].fillna(merged["resource_id"])
-
-                st.session_state["planned_tasks"] = merged
-                _log(
-                    f"Cambios aplicados. Tareas quitadas: {len(to_drop_ids)}. "
-                    "Usa 'Publicar' para enviar a ProjectCor o 'Compactar' para eliminar huecos."
-                )
-                st.rerun()
-        with col_pick:
+        if not filtered.empty:
             picked = st.selectbox(
                 "Ver detalle de tarea",
-                options=[""] + edit_df["id"].tolist(),
-                format_func=lambda v: "(selecciona una tarea)" if v == "" else f"{v} · {edit_df.set_index('id').loc[v, 'text'][:60]}" if v in edit_df['id'].values else v,
+                options=[""] + filtered["ID de tarea"].tolist(),
+                format_func=lambda v: (
+                    "(selecciona una tarea)" if v == ""
+                    else f"{v} · {filtered.set_index('ID de tarea').loc[v, 'Tarea'][:60]}"
+                    if v in filtered["ID de tarea"].values else v
+                ),
                 key="pick_task_main",
             )
             if picked:
@@ -792,7 +868,7 @@ elif active_tab == "Gantt interactivo":
 # ---- Plan original ----
 elif active_tab == "Plan original":
     st.caption(
-        "Asignación inicial entregada por el algoritmo. Puedes ajustar fechas aquí y publicarlas tal cual en ProjectCor."
+        "Asignación inicial entregada por el algoritmo. Usa 'Filtros de columna' para buscar por cliente, proyecto, tarea, etc."
     )
     ap_view = _prepare_aplan_gantt_view(st.session_state["a_plan"])
     _plot_gantt(ap_view, key="gantt_aplan")
@@ -802,42 +878,26 @@ elif active_tab == "Plan original":
         st.info("Sincroniza para cargar el plan original.")
     else:
         visible_ids = set(ap_view["id"].astype(str)) if not ap_view.empty else set()
-        editable = ap_now[ap_now["id"].astype(str).isin(visible_ids)].copy() if visible_ids else pd.DataFrame(columns=ap_now.columns)
-        if editable.empty:
+        visible = ap_now[ap_now["id"].astype(str).isin(visible_ids)].copy() if visible_ids else pd.DataFrame(columns=ap_now.columns)
+        if visible.empty:
             st.info("No hay tareas visibles con los filtros actuales.")
         else:
-            editable["id"] = editable["id"].astype(str)
-            editable["title"] = editable.get("title", "").fillna("").astype(str)
-            editable["collab_email_plan"] = editable.get("collab_email_plan", "").fillna("").astype(str)
-            editable["datetime"] = editable["datetime"].astype(str)
-            editable["deadline"] = editable["deadline"].astype(str)
-            edit_df = editable[["id", "title", "collab_email_plan", "datetime", "deadline"]].copy()
+            disp = _build_display_from_aplan(visible)
+            filtered = _render_task_table(disp, key_prefix="tbl_aplan")
 
-            edited = st.data_editor(
-                edit_df,
-                hide_index=True,
-                key="editor_aplan",
-                num_rows="fixed",
-                column_config={
-                    "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
-                    "title": st.column_config.TextColumn("Tarea", disabled=True),
-                    "collab_email_plan": st.column_config.TextColumn("Colaborador (email)"),
-                    "datetime": st.column_config.TextColumn("Inicio (YYYY-MM-DD HH:MM:SS)"),
-                    "deadline": st.column_config.TextColumn("Deadline (YYYY-MM-DD HH:MM:SS)"),
-                },
-            )
-
-            if st.button("Aplicar cambios en Plan original", icon=":material/save:"):
-                orig = st.session_state["a_plan"].copy()
-                orig["id"] = orig["id"].astype(str)
-                edited["id"] = edited["id"].astype(str)
-                indexed = edited.set_index("id")
-                merged = orig.set_index("id")
-                for col in ("collab_email_plan", "datetime", "deadline"):
-                    merged.loc[indexed.index, col] = indexed[col].values
-                st.session_state["a_plan"] = merged.reset_index()
-                _log("Plan original actualizado. Usa 'Publicar' para enviar los cambios a ProjectCor.")
-                st.rerun()
+            if not filtered.empty:
+                picked = st.selectbox(
+                    "Ver detalle de tarea",
+                    options=[""] + filtered["ID de tarea"].tolist(),
+                    format_func=lambda v: (
+                        "(selecciona una tarea)" if v == ""
+                        else f"{v} · {filtered.set_index('ID de tarea').loc[v, 'Tarea'][:60]}"
+                        if v in filtered["ID de tarea"].values else v
+                    ),
+                    key="pick_task_aplan",
+                )
+                if picked:
+                    st.session_state["selected_id"] = picked
 
 # ---- Disponibilidad ----
 elif active_tab == "Disponibilidad":
