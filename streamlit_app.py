@@ -397,20 +397,32 @@ _MULTISELECT_COLS = ("Cliente", "Estado", "Categoría")
 def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     if df is None or df.empty:
         return df
-    with st.expander("Filtros de columna", expanded=False):
-        row1 = st.columns(4)
-        row2 = st.columns(4)
-        widgets = list(row1) + list(row2)
-        active: dict[str, tuple[str, object]] = {}
-        for i, col in enumerate(DISPLAY_COLS):
-            with widgets[i]:
+    st.markdown(
+        "<div class='col-filter-bar-label'>Filtrar por columna</div>",
+        unsafe_allow_html=True,
+    )
+    header_cols = st.columns(len(DISPLAY_COLS), gap="small")
+    active: dict[str, tuple[str, object]] = {}
+    for i, col in enumerate(DISPLAY_COLS):
+        state_key = f"{key_prefix}_flt_{col}"
+        cur = st.session_state.get(state_key)
+        has_val = bool(cur) if not isinstance(cur, list) else len(cur) > 0
+        label = f"● {col}" if has_val else col
+        with header_cols[i]:
+            with st.popover(label, use_container_width=True):
                 if col in _MULTISELECT_COLS:
                     opts = sorted({x for x in df[col].dropna().astype(str).tolist() if x.strip()})
-                    sel = st.multiselect(col, opts, default=[], key=f"{key_prefix}_flt_{col}", placeholder="Todos")
+                    sel = st.multiselect(
+                        col, opts, key=state_key,
+                        placeholder="Todos", label_visibility="collapsed",
+                    )
                     if sel:
                         active[col] = ("in", sel)
                 else:
-                    val = st.text_input(col, key=f"{key_prefix}_flt_{col}", placeholder="Buscar…")
+                    val = st.text_input(
+                        col, key=state_key,
+                        placeholder=f"Buscar en {col}…", label_visibility="collapsed",
+                    )
                     if val:
                         active[col] = ("contains", val)
     out = df
@@ -831,7 +843,7 @@ if active_tab == "Cronograma editable":
     pt_view = _filtered_planned_tasks()
     _plot_gantt(pt_view, key="gantt_main")
 
-    st.caption("Tabla del cronograma actual. Usa 'Filtros de columna' para buscar por cliente, proyecto, tarea, etc.")
+    st.caption("Tabla del cronograma actual. Haz clic en el nombre de cada columna para filtrar por esa columna.")
     if pt_view.empty:
         st.info("Sincroniza y dibuja el cronograma para ver las tareas aquí.")
     else:
@@ -868,7 +880,7 @@ elif active_tab == "Gantt interactivo":
 # ---- Plan original ----
 elif active_tab == "Plan original":
     st.caption(
-        "Asignación inicial entregada por el algoritmo. Usa 'Filtros de columna' para buscar por cliente, proyecto, tarea, etc."
+        "Asignación inicial entregada por el algoritmo. Haz clic en el nombre de cada columna para filtrar por esa columna."
     )
     ap_view = _prepare_aplan_gantt_view(st.session_state["a_plan"])
     _plot_gantt(ap_view, key="gantt_aplan")
