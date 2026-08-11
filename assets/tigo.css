@@ -144,6 +144,14 @@ section[data-testid="stSidebar"] .stMarkdown h3 {
   color: var(--blue-500); margin-top: 6px; margin-bottom: 4px;
 }
 
+section[data-testid="stSidebar"] label p,
+section[data-testid="stSidebar"] label {
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  color: #334155 !important;
+  letter-spacing: .2px;
+}
+
 div[data-baseweb="input"] > div,
 div[data-baseweb="select"] > div,
 div[data-baseweb="textarea"] > div {
@@ -157,6 +165,37 @@ div[data-baseweb="textarea"] textarea {
   font-family: var(--font) !important;
   font-size: 14px !important;
 }
+
+section[data-testid="stSidebar"] div[data-baseweb="input"] > div,
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
+section[data-testid="stSidebar"] div[data-baseweb="textarea"] > div,
+section[data-testid="stSidebar"] div[data-testid="stDateInput"] div[data-baseweb="input"] > div {
+  background: #F1F5FB !important;
+  border: 1.5px solid #CBD5E1 !important;
+  min-height: 42px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+section[data-testid="stSidebar"] div[data-baseweb="input"] > div:hover,
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div:hover,
+section[data-testid="stSidebar"] div[data-baseweb="textarea"] > div:hover {
+  border-color: var(--blue-500) !important;
+  background: #E8EFFB !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="input"] > div:focus-within,
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div:focus-within,
+section[data-testid="stSidebar"] div[data-baseweb="textarea"] > div:focus-within {
+  border-color: var(--blue-500) !important;
+  background: #FFFFFF !important;
+  box-shadow: var(--focus) !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="tag"] {
+  background: var(--blue-500) !important;
+  color: #fff !important;
+  border-radius: var(--r-pill) !important;
+  font-weight: 700;
+}
+section[data-testid="stSidebar"] div[data-baseweb="tag"] svg { fill: #fff !important; }
 
 div[data-testid="stSegmentedControl"] label {
   border-radius: var(--r-pill) !important;

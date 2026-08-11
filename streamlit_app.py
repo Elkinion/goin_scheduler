@@ -57,15 +57,106 @@ def _password_gate() -> None:
         return
     if st.session_state.get("_auth_ok"):
         return
-    st.markdown("### Acceso")
-    st.caption("Ingresa la contraseña del equipo para continuar.")
-    pwd = st.text_input("Contraseña", type="password", key="_pwd_input", label_visibility="collapsed")
-    if pwd:
+
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800;900&display=swap');
+        .stApp { background:#F4F6FA; }
+        header[data-testid="stHeader"] { background: transparent !important; }
+        section[data-testid="stSidebar"] { display:none !important; }
+        div[data-testid="stMainBlockContainer"] { padding-top: 6vh !important; }
+        .tigo-gate {
+          max-width: 420px; margin: 6vh auto 0 auto;
+          background:#fff; border-radius: 24px;
+          box-shadow: 0 12px 40px rgba(0,30,180,.14), 0 2px 8px rgba(0,0,0,.06);
+          overflow:hidden;
+          font-family:'DM Sans','Segoe UI',sans-serif;
+        }
+        .tigo-gate__head {
+          background: linear-gradient(135deg, #001EB4 0%, #00005A 100%);
+          color:#fff; padding: 28px 32px 22px 32px; position:relative;
+        }
+        .tigo-gate__head::after{
+          content:''; position:absolute; right:0; top:0; width:40%; height:100%;
+          background: rgba(255,255,255,.06);
+          clip-path: polygon(20% 0, 100% 0, 100% 100%, 0% 100%);
+        }
+        .tigo-gate__ey {
+          position:relative; z-index:1;
+          font-size:10px; font-weight:800; letter-spacing:2px; text-transform:uppercase;
+          color:#44C8F5; margin-bottom:6px;
+        }
+        .tigo-gate__title {
+          position:relative; z-index:1;
+          font-weight:900; font-size:22px; line-height:1.15; letter-spacing:-0.2px;
+        }
+        .tigo-gate__body { padding: 24px 32px 28px 32px; }
+        .tigo-gate__hint {
+          color:#475569; font-size:13px; margin: 0 0 14px 0;
+        }
+        .tigo-gate div[data-baseweb="input"] > div {
+          border-radius: 14px !important;
+          border: 1.5px solid #CBD5E1 !important;
+          background:#F8FAFC !important;
+          min-height: 46px;
+        }
+        .tigo-gate div[data-baseweb="input"] input {
+          font-family:'DM Sans','Segoe UI',sans-serif !important;
+          font-size:15px !important;
+        }
+        .tigo-gate .stButton > button {
+          width:100%; min-height:46px; border-radius:9999px !important;
+          background:#001EB4 !important; color:#fff !important;
+          border:2px solid #001EB4 !important;
+          font-family:'DM Sans','Segoe UI',sans-serif !important;
+          font-weight:800 !important; font-size:14px !important;
+          letter-spacing:.3px;
+        }
+        .tigo-gate .stButton > button:hover {
+          background:#0026E5 !important; border-color:#0026E5 !important;
+        }
+        .tigo-gate__foot {
+          text-align:center; color:#94A3B8; font-size:11px;
+          padding: 14px 0 0 0; letter-spacing:1px; text-transform:uppercase; font-weight:700;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="tigo-gate">
+          <div class="tigo-gate__head">
+            <div class="tigo-gate__ey">Design · Regional</div>
+            <div class="tigo-gate__title">Planificador de diseño</div>
+          </div>
+          <div class="tigo-gate__body">
+            <p class="tigo-gate__hint">Ingresa la contraseña del equipo para continuar.</p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.form("_pwd_form", clear_on_submit=False):
+        pwd = st.text_input("Contraseña", type="password", key="_pwd_input", label_visibility="collapsed", placeholder="Contraseña")
+        submitted = st.form_submit_button("Entrar")
+
+    if submitted:
         if pwd == expected:
             st.session_state["_auth_ok"] = True
             st.rerun()
         else:
             st.error("Contraseña incorrecta.")
+
+    st.markdown(
+        """
+            <div class="tigo-gate__foot">Internal · Tigo</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 
