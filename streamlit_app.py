@@ -138,15 +138,19 @@ def _distinct_choices(df: pd.DataFrame, col: str) -> list[str]:
 
 
 def _filtered_planned_tasks() -> pd.DataFrame:
-    return apply_gantt_filters(
-        st.session_state["planned_tasks"],
-        resource=st.session_state["filter_resource"],
-        countries=st.session_state["filter_country"],
-        objective=st.session_state["filter_objective"],
-        business_unit=st.session_state["filter_business_unit"],
-        date_from=st.session_state["filter_date_from"],
-        date_to=st.session_state["filter_date_to"],
-    )
+    try:
+        return apply_gantt_filters(
+            st.session_state.get("planned_tasks", pd.DataFrame()),
+            resource=st.session_state.get("filter_resource"),
+            countries=st.session_state.get("filter_country") or [],
+            objective=st.session_state.get("filter_objective"),
+            business_unit=st.session_state.get("filter_business_unit"),
+            date_from=st.session_state.get("filter_date_from"),
+            date_to=st.session_state.get("filter_date_to"),
+        )
+    except Exception as _e:
+        st.session_state["log"] = f"[filtro] {type(_e).__name__}: {_e}"
+        return st.session_state.get("planned_tasks", pd.DataFrame())
 
 
 def _prepare_aplan_gantt_view(ap: pd.DataFrame) -> pd.DataFrame:
