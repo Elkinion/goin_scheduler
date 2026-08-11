@@ -998,21 +998,21 @@ elif active_tab == "Estadísticas":
             if d.empty:
                 st.info("Sin datos.")
             else:
-                order = d.groupby("combo")["dur_h"].median().sort_values().index.tolist()
+                order = d.groupby("combo")["dur_h"].median().sort_values(ascending=False).index.tolist()
                 fig = px.box(
-                    d, x="combo", y="dur_h",
+                    d, x="dur_h", y="combo",
                     color="combo",
                     color_discrete_sequence=BRAND_PALETTE,
                     category_orders={"combo": order},
                     points="outliers",
+                    orientation="h",
                 )
                 fig.update_layout(
-                    height=380,
-                    xaxis_title="", yaxis_title="Duración (h)",
-                    margin=dict(l=0, r=0, t=10, b=80),
+                    height=max(380, 28 * len(order) + 80),
+                    xaxis_title="Duración (h)", yaxis_title="",
+                    margin=dict(l=0, r=0, t=10, b=10),
                     showlegend=False,
                 )
-                fig.update_xaxes(tickangle=-30)
                 st.plotly_chart(fig, key="stats_duration")
 
 # ---- Notas por país ----
