@@ -48,15 +48,30 @@ def apply_gantt_filters(
     if business_unit and business_unit != ALL_SENTINEL:
         df = df[df["business_unit"] == _norm(business_unit)]
 
-    if date_from is not None or date_to is not None:
+    def _to_ts(x):
+        if x is None:
+            return None
+        try:
+            ts = pd.Timestamp(x)
+        except (TypeError, ValueError):
+            return None
+        if pd.isna(ts):
+            return None
+        return ts.tz_localize(None) if ts.tzinfo is not None else ts
+
+    ts_from = _to_ts(date_from)
+    ts_to = _to_ts(date_to)
+    if ts_from is not None or ts_to is not None:
         start_col = "start_date" if "start_date" in df.columns else ("datetime" if "datetime" in df.columns else None)
         if start_col is not None:
             starts = pd.to_datetime(df[start_col], errors="coerce")
+            if getattr(starts.dtype, "tz", None) is not None:
+                starts = starts.dt.tz_localize(None)
             mask = starts.notna()
-            if date_from is not None:
-                mask &= starts >= pd.Timestamp(date_from)
-            if date_to is not None:
-                mask &= starts <= (pd.Timestamp(date_to) + pd.Timedelta(days=1))
+            if ts_from is not None:
+                mask &= starts >= ts_from
+            if ts_to is not None:
+                mask &= starts <= (ts_to + pd.Timedelta(days=1))
             df = df[mask]
 
     return df

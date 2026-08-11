@@ -349,14 +349,13 @@ with st.sidebar:
 
     col_df, col_dt = st.columns(2)
     with col_df:
-        st.date_input("Desde", value=st.session_state["filter_date_from"], key="filter_date_from", format="YYYY-MM-DD")
+        st.date_input("Desde", key="filter_date_from", format="YYYY-MM-DD")
     with col_dt:
-        st.date_input("Hasta", value=st.session_state["filter_date_to"], key="filter_date_to", format="YYYY-MM-DD")
+        st.date_input("Hasta", key="filter_date_to", format="YYYY-MM-DD")
 
     st.markdown("")
     st.date_input(
         "Fecha ancla del cronograma",
-        value=st.session_state["sync_anchor_date"],
         key="sync_anchor_date",
         format="YYYY-MM-DD",
         help="Desde qué fecha se planifica al sincronizar con ProjectCor.",
