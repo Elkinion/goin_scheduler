@@ -23,6 +23,7 @@ from domain.config import (
     STATUS_COLORS,
     STATUS_DISPLAY,
     TASK_FALLBACK_HOURS,
+    TIGO_BLUE_500,
     TZ_LOCAL,
     WORK_HOURS_RATIO,
 )
@@ -1014,25 +1015,36 @@ elif active_tab == "Disponibilidad":
         if pt.empty:
             st.info("Sin datos.")
         else:
-            pie = (
+            load = (
                 pt.assign(dur_h=pd.to_numeric(pt["duration"], errors="coerce").fillna(TASK_FALLBACK_HOURS))
                 .groupby("resource_name", dropna=True)["dur_h"]
                 .sum()
                 .reset_index()
             )
-            pie["horas"] = (pie["dur_h"] * WORK_HOURS_RATIO).round(1)
-            pie = pie[pie["horas"] > 0].sort_values("horas", ascending=False)
-            if pie.empty:
+            load["horas"] = (load["dur_h"] * WORK_HOURS_RATIO).round(1)
+            load = load[load["horas"] > 0].sort_values("horas", ascending=True)
+            if load.empty:
                 st.info("No hay horas pendientes.")
             else:
-                pie["label"] = pie["resource_name"] + " (" + pie["horas"].astype(str) + "h)"
-                fig = px.pie(
-                    pie, names="label", values="horas",
-                    color_discrete_sequence=BRAND_PALETTE,
+                fig = px.bar(
+                    load, x="horas", y="resource_name",
+                    orientation="h", text="horas",
+                    color_discrete_sequence=[TIGO_BLUE_500],
                 )
-                fig.update_traces(textinfo="label+percent")
-                fig.update_layout(height=440, margin=dict(l=0, r=0, t=10, b=10))
-                st.plotly_chart(fig, key="pie_hours")
+                fig.update_traces(
+                    texttemplate="%{text}h",
+                    textposition="outside",
+                    marker_color=TIGO_BLUE_500,
+                    cliponaxis=False,
+                )
+                fig.update_layout(
+                    height=max(360, 22 * len(load) + 80),
+                    margin=dict(l=0, r=24, t=10, b=10),
+                    xaxis_title="Horas", yaxis_title=None,
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                fig.update_xaxes(showgrid=True, gridcolor="rgba(0,0,0,.06)")
+                st.plotly_chart(fig, key="bar_hours")
 
     with col_tbl:
         st.markdown("**Detalle por colaborador**")
