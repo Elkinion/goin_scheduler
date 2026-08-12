@@ -1007,6 +1007,19 @@ elif active_tab == "Disponibilidad":
     pt = _filtered_planned_tasks()
     resources = st.session_state["planned_resources"]
 
+    if not pt.empty and "status" in pt.columns:
+        codes_in_data = [c for c in STATUS_DISPLAY.keys() if c in set(pt["status"].dropna().astype(str))]
+        labels_in_data = [STATUS_DISPLAY[c] for c in codes_in_data]
+        label_to_code = {STATUS_DISPLAY[c]: c for c in codes_in_data}
+        picked_labels = st.multiselect(
+            "Filtrar por estado",
+            labels_in_data,
+            default=labels_in_data,
+            key="disp_status_filter",
+        )
+        picked_codes = [label_to_code[lbl] for lbl in picked_labels]
+        pt = pt[pt["status"].astype(str).isin(picked_codes)]
+
     col_pie, col_tbl = st.columns([1, 1])
 
     with col_pie:
