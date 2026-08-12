@@ -499,7 +499,8 @@ def _build_display_from_aplan(ap: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-_MULTISELECT_COLS = ("Cliente", "Estado", "Categoría")
+_MULTISELECT_COLS = ("Cliente", "Proyecto", "Estado", "Categoría")
+_NO_FILTER_COLS = ("Fecha de inicio", "Finalización")
 
 
 def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
@@ -515,6 +516,8 @@ def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     for i, col in enumerate(DISPLAY_COLS):
         state_key = f"{key_prefix}_flt_{col}"
         with header_cols[i]:
+            if col in _NO_FILTER_COLS:
+                continue
             if col in _MULTISELECT_COLS:
                 opts = sorted({x for x in df[col].dropna().astype(str).tolist() if x.strip()})
                 sel = st.multiselect(
