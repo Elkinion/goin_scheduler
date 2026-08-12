@@ -451,8 +451,12 @@ def _to_excel_bytes(df: pd.DataFrame) -> bytes:
 
 DISPLAY_COLS = [
     "Cliente", "Proyecto", "Tarea", "ID de tarea",
-    "Estado", "Fecha de inicio", "Finalización", "Categoría",
+    "Estado", "Inicio", "Final", "Categoría",
 ]
+
+
+def _fmt_short_date(s):
+    return pd.to_datetime(s, errors="coerce").dt.strftime("%y-%m-%d").fillna("")
 
 
 def _to_client(cc) -> str:
@@ -475,8 +479,8 @@ def _build_display_from_planned(pt: pd.DataFrame) -> pd.DataFrame:
         "Tarea": d.get("text", pd.Series([""] * len(d))).fillna("").astype(str),
         "ID de tarea": d.get("id", pd.Series([""] * len(d))).astype(str),
         "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str).map(lambda s: STATUS_DISPLAY.get(s, s)),
-        "Fecha de inicio": d.get("start_date", pd.Series([""] * len(d))).fillna("").astype(str),
-        "Finalización": ends.dt.strftime("%Y-%m-%d %H:%M").fillna(""),
+        "Inicio": _fmt_short_date(d.get("start_date", pd.Series([""] * len(d)))),
+        "Final": ends.dt.strftime("%y-%m-%d").fillna(""),
         "Categoría": d.get("typeTask_name", pd.Series([""] * len(d))).fillna("").astype(str),
     })
 
@@ -493,14 +497,14 @@ def _build_display_from_aplan(ap: pd.DataFrame) -> pd.DataFrame:
         "Tarea": d.get("title", pd.Series([""] * len(d))).fillna("").astype(str),
         "ID de tarea": d.get("id", pd.Series([""] * len(d))).astype(str),
         "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str).map(lambda s: STATUS_DISPLAY.get(s, s)),
-        "Fecha de inicio": d.get("datetime", pd.Series([""] * len(d))).fillna("").astype(str),
-        "Finalización": d.get("deadline", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Inicio": _fmt_short_date(d.get("datetime", pd.Series([""] * len(d)))),
+        "Final": _fmt_short_date(d.get("deadline", pd.Series([""] * len(d)))),
         "Categoría": d.get("typeTask_name", pd.Series([""] * len(d))).fillna("").astype(str),
     })
 
 
 _MULTISELECT_COLS = ("Cliente", "Proyecto", "Estado", "Categoría")
-_NO_FILTER_COLS = ("Fecha de inicio", "Finalización")
+_NO_FILTER_COLS = ("Inicio", "Final")
 
 
 def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
@@ -571,12 +575,12 @@ def _render_task_table(df_display: pd.DataFrame, key_prefix: str) -> pd.DataFram
         height=520,
         column_config={
             "Cliente": st.column_config.TextColumn(width="small"),
-            "Proyecto": st.column_config.TextColumn(width="medium"),
-            "Tarea": st.column_config.TextColumn(width="large"),
+            "Proyecto": st.column_config.TextColumn(width="small"),
+            "Tarea": st.column_config.TextColumn(width="medium"),
             "ID de tarea": st.column_config.TextColumn(width="small"),
             "Estado": st.column_config.TextColumn(width="small"),
-            "Fecha de inicio": st.column_config.TextColumn(width="small"),
-            "Finalización": st.column_config.TextColumn(width="small"),
+            "Inicio": st.column_config.TextColumn(width="small"),
+            "Final": st.column_config.TextColumn(width="small"),
             "Categoría": st.column_config.TextColumn(width="small"),
         },
     )
