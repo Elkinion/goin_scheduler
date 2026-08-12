@@ -222,28 +222,44 @@ div[data-testid="stSegmentedControl"] label {
   text-transform: uppercase; color: var(--blue-500);
   margin: 6px 0 6px 2px;
 }
-div[data-testid="stMain"] div[data-testid="stPopover"] > div > button {
-  width: 100% !important;
+
+/* Column-header inline filters (single click to open) */
+.col-filter-bar { display:none; }
+.col-filter-bar + div div[data-baseweb="select"] > div,
+.col-filter-bar + div div[data-baseweb="input"] > div {
   min-height: 34px !important;
-  padding: 0 10px !important;
-  background: var(--blue-500) !important;
-  color: #fff !important;
-  border: 1px solid var(--blue-500) !important;
   border-radius: 8px 8px 0 0 !important;
-  font-family: var(--font) !important;
-  font-weight: 700 !important;
-  font-size: 12px !important;
-  letter-spacing: .2px;
-  text-align: left !important;
-  justify-content: flex-start !important;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--blue-500) !important;
+  border: 1px solid var(--blue-500) !important;
+  box-shadow: none !important;
 }
-div[data-testid="stMain"] div[data-testid="stPopover"] > div > button:hover {
+.col-filter-bar + div div[data-baseweb="select"] > div:hover,
+.col-filter-bar + div div[data-baseweb="input"] > div:hover {
   background: var(--blue-400) !important;
   border-color: var(--blue-400) !important;
 }
+.col-filter-bar + div div[data-baseweb="select"] input,
+.col-filter-bar + div div[data-baseweb="input"] input {
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  padding: 0 6px !important;
+}
+.col-filter-bar + div div[data-baseweb="select"] input::placeholder,
+.col-filter-bar + div div[data-baseweb="input"] input::placeholder {
+  color: rgba(255,255,255,.85) !important;
+  font-weight: 700 !important;
+}
+.col-filter-bar + div div[data-baseweb="select"] svg,
+.col-filter-bar + div div[data-baseweb="input"] svg { fill: #fff !important; color:#fff !important; }
+.col-filter-bar + div div[data-baseweb="tag"] {
+  background: rgba(255,255,255,.22) !important;
+  color: #fff !important;
+  border-radius: var(--r-pill) !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+}
+.col-filter-bar + div div[data-baseweb="tag"] svg { fill: #fff !important; }
 
 .logbox {
   background:#FFFFFF; border:1px solid #E4E8F0; border-radius: var(--r-card);

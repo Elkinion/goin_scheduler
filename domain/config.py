@@ -49,15 +49,26 @@ TIGO_ERR = "#C62828"
 TIGO_OK = "#1A7F3C"
 
 STATUS_COLORS = {
-    "nueva": "#0DA0C0",
-    "en_proceso": "#F0AD32",
+    "nueva": TIGO_CYAN,
+    "en_proceso": TIGO_YELLOW,
     "en_revision": "#9B5AB9",
-    "ajustes": "#E21354",
-    "en_diseno": "#E21354",
-    "suspendida": "#585858",
-    "finalizada": "#11E478",
+    "ajustes": TIGO_MAGENTA,
+    "suspendida": "#909090",
+    "finalizada": TIGO_GREEN,
 }
 DEFAULT_STATUS_COLOR = "#9E9E9E"
+
+STATUS_DISPLAY = {
+    "nueva": "Nueva",
+    "en_proceso": "En proceso",
+    "en_revision": "En revisión",
+    "ajustes": "Ajustes",
+    "suspendida": "Suspendida",
+    "finalizada": "Finalizada",
+    # Fallback: si algún estado llega sin normalizar desde la API
+    "en_diseno": "Ajustes",
+    "estancada": "Suspendida",
+}
 
 BRAND_PALETTE = [
     TIGO_BLUE_500, TIGO_CYAN, TIGO_YELLOW, TIGO_GREEN,

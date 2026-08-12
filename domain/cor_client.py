@@ -1,3 +1,102 @@
+"""
+ProjectCor API client.
+
+Base URL:
+    https://api.projectcor.com/v1   (constant `API_BASE` en `domain.config`)
+
+Autenticación:
+    OAuth2 Client Credentials.
+    POST {API_BASE}/oauth/token
+        query : grant_type=client_credentials
+        header: Authorization: Basic base64(CLIENT_ID:CLIENT_SECRET)
+        resp  : { "access_token": "..." }
+    El token se usa como Bearer en el resto de llamadas.
+    -> Implementado en `get_token()`.
+
+Endpoints usados
+----------------
+
+1) Listar tareas por status  (paginado)
+   GET {API_BASE}/tasks
+       query: page, perPage, filters={"status":"<status>"}
+       resp : { "data": [ {task}, ... ], "page": n, "lastPage": m }
+   -> `get_tasks_by_status_paged(token, status_value, per_page=200)`
+
+   Se descarga página a página hasta que:
+     - `data` viene vacío, o
+     - `len(data) < per_page`, o
+     - `page >= lastPage`
+     - hard-cap de 500 páginas por seguridad.
+
+2) Detalle de tarea (para enriquecer skills y typeTask)
+   GET {API_BASE}/tasks/{task_id}
+       resp: { "id":..., "skill":[...], "typeTask":{"names":[{"name":"..."}]}, ... }
+   -> `get_task_by_id(token, task_id)`
+   -> `enrich_tasks_with_details(...)` paraleliza con ThreadPoolExecutor
+      (default 32 workers) y cachea en disco en `_DETAILS_CACHE_FILE`
+      (`{TEMP}/goin_scheduler_cache/task_details.json`) para no re-pegar
+      la API entre sincronizaciones.
+
+3) Actualizar fechas de una tarea
+   PATCH {API_BASE}/tasks/{task_id}
+       body: { "datetime": "<UTC ISO>", "deadline": "<UTC ISO>" }
+       resp: 2xx OK / 4xx-5xx error
+   -> `patch_task_dates(token, task_id, datetime_utc, deadline_utc)`
+   -> `push_tasks_to_cor(payload_df)` itera secuencialmente (no en paralelo,
+      para no gatillar rate-limits en un endpoint de escritura).
+
+Statuses conocidos (verificados 2026-08-12 cruzando el dump completo de la API
+contra el "Reporte general de tareas" descargado de la UI de Cor — 9,789 IDs
+comunes, mapeo 1:1)
+----------------------------------------------------------------------
+    API             UI de Cor       En la app       ¿Se planifica?
+    ----            ---------       ---------       --------------
+    "nueva"         Nueva           "nueva"         SÍ
+    "en_proceso"    En proceso      "en_proceso"    SÍ
+    "en_revision"   En revisión     "en_revision"   SÍ
+    "en_diseno"     Ajustes         "ajustes"       SÍ  (renombrado en ingest)
+    "estancada"     Suspendida      "suspendida"    NO  (renombrado en ingest)
+    "finalizada"    Finalizada      "finalizada"    NO
+
+Divergencias importantes de nombres entre API y UI:
+    - API "en_diseno"  <->  UI "Ajustes"
+    - API "estancada"  <->  UI "Suspendida"
+`build_a_from_cor` renombra ambos en el DataFrame de salida para que lo que ve
+el usuario en el planificador coincida con lo que ve en Cor.
+
+`STATUSES_NO_FINAL` define qué statuses (nombres crudos de la API) sí se
+descargan y se meten en el cronograma. "finalizada", "estancada" y cualquier
+otro NO se traen — la app nunca reserva calendario con ellos.
+
+Notas de payload (campos que sí usamos aguas abajo)
+---------------------------------------------------
+De /tasks (list) usamos vía `pd.json_normalize`:
+    id, title, description, project_id, project_name, deadline, status,
+    priority, archived, user_id, task_father, hour_charged, order_tasks,
+    datetime, deliverable,
+    collaborators[]  ->  se aplana a collab_id / collab_first_name /
+                          collab_last_name / collab_email / collab_email_n /
+                          collab_userPosition_name (`_first_collab` +
+                          `_count_emails`).
+
+De /tasks/{id} (detalle) solo extraemos:
+    skill[]     ->  concatenado en `skill_names` con `_extract_skills`
+                    (elige el label preferido `preferred_lang="es"`).
+    typeTask.names[0].name  ->  `typeTask_name`.
+
+Filtros / limpiezas aplicadas antes de exponer el DataFrame:
+    - Se descartan filas con `archived == True` (ver `_coerce_archived`).
+    - `tag` se saca del primer `[XX]` en el título (país u origen).
+
+Credenciales
+------------
+`COR_API_KEY` y `COR_CLIENT_SECRET` se resuelven en `domain/config.py`
+en este orden:
+    1) variables de entorno del proceso
+    2) `st.secrets` de Streamlit
+    3) default hardcoded (solo para desarrollo)
+"""
+
 from __future__ import annotations
 
 import base64
@@ -367,6 +466,11 @@ def build_a_from_cor(
     merged["tag"] = merged["title"].map(_extract_tag)
 
     out = merged[keep_cols + ["tag"]].copy()
+    if "status" in out.columns:
+        out["status"] = out["status"].replace({
+            "en_diseno": "ajustes",
+            "estancada": "suspendida",
+        })
     if "archived" in out.columns:
         out["archived"] = out["archived"].map(_coerce_archived)
         out = out[~out["archived"].astype(bool)].reset_index(drop=True)

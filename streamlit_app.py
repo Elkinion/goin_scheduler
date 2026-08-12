@@ -21,6 +21,7 @@ from domain.config import (
     BRAND_PALETTE,
     DEFAULT_STATUS_COLOR,
     STATUS_COLORS,
+    STATUS_DISPLAY,
     TASK_FALLBACK_HOURS,
     TZ_LOCAL,
     WORK_HOURS_RATIO,
@@ -39,12 +40,36 @@ from domain.payload import (
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
+ASSETS_DIR = APP_DIR / "assets"
 
 st.set_page_config(
     page_title="Planificador de diseño",
     page_icon=":material/schedule:",
     layout="wide",
 )
+
+
+def _read_svg(name: str) -> str:
+    p = ASSETS_DIR / "icons" / name
+    try:
+        return p.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
+def _svg_recolor(svg: str, fill: str) -> str:
+    import re as _re
+    if not svg:
+        return svg
+    svg = _re.sub(r"<style[\s\S]*?</style>", "", svg)
+    svg = _re.sub(r'\sclass="[^"]*"', "", svg)
+    svg = _re.sub(r'\sfill="[^"]*"', "", svg)
+    svg = svg.replace("<svg ", f'<svg fill="{fill}" ', 1)
+    return svg
+
+
+LOGO_TIGO_WHITE = _svg_recolor(_read_svg("logo-tigo.svg"), "#FFFFFF")
+GO_WHITE = _svg_recolor(_read_svg("go.svg"), "#FFFFFF")
 
 
 def _password_gate() -> None:
@@ -61,64 +86,145 @@ def _password_gate() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800;900&display=swap');
-        .stApp { background:#F4F6FA; }
-        header[data-testid="stHeader"] { background: transparent !important; }
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+
+        .stApp {
+          background:
+            radial-gradient(1200px 600px at 15% -10%, rgba(68,200,245,.28), transparent 60%),
+            radial-gradient(900px 500px at 110% 110%, rgba(0,38,229,.35), transparent 60%),
+            linear-gradient(135deg, #00005A 0%, #001EB4 60%, #0026E5 100%) !important;
+          min-height: 100vh;
+        }
+        header[data-testid="stHeader"] { display:none !important; }
         section[data-testid="stSidebar"] { display:none !important; }
-        div[data-testid="stMainBlockContainer"] { padding-top: 6vh !important; }
-        .tigo-gate {
-          max-width: 420px; margin: 6vh auto 0 auto;
-          background:#fff; border-radius: 24px;
-          box-shadow: 0 12px 40px rgba(0,30,180,.14), 0 2px 8px rgba(0,0,0,.06);
-          overflow:hidden;
-          font-family:'DM Sans','Segoe UI',sans-serif;
+        div[data-testid="stToolbar"] { display:none !important; }
+
+        div[data-testid="stMainBlockContainer"] {
+          max-width: 440px !important;
+          padding: 12vh 0 4vh 0 !important;
         }
-        .tigo-gate__head {
+        div[data-testid="stMainBlockContainer"] > div > div {
+          background: #FFFFFF;
+          border-radius: 28px;
+          padding: 44px 40px 32px 40px;
+          box-shadow:
+            0 40px 100px rgba(0,0,20,.45),
+            0 12px 32px rgba(0,0,20,.25);
+          font-family: 'DM Sans','Segoe UI',sans-serif;
+        }
+
+        .gate-brand {
+          display:flex; align-items:center; justify-content:center;
+          gap:10px; margin-bottom: 22px;
+        }
+        .gate-brand__box {
+          display:inline-flex; align-items:center; justify-content:center;
+          padding: 12px 16px;
           background: linear-gradient(135deg, #001EB4 0%, #00005A 100%);
-          color:#fff; padding: 28px 32px 22px 32px; position:relative;
+          border-radius: 14px;
+          box-shadow: 0 6px 18px rgba(0,30,180,.35);
         }
-        .tigo-gate__head::after{
-          content:''; position:absolute; right:0; top:0; width:40%; height:100%;
-          background: rgba(255,255,255,.06);
-          clip-path: polygon(20% 0, 100% 0, 100% 100%, 0% 100%);
+        .gate-brand__box svg { height: 22px; width:auto; display:block; }
+        .gate-ey {
+          text-align:center;
+          font-size: 10px; font-weight: 800; letter-spacing: 2.5px;
+          text-transform: uppercase; color: #0026E5;
         }
-        .tigo-gate__ey {
-          position:relative; z-index:1;
-          font-size:10px; font-weight:800; letter-spacing:2px; text-transform:uppercase;
-          color:#44C8F5; margin-bottom:6px;
+        .gate-title {
+          text-align:center;
+          font-family:'DM Sans',sans-serif;
+          font-weight: 900; font-size: 24px; line-height: 1.15;
+          color: #00005A; letter-spacing:-.3px;
+          margin: 6px 0 10px 0;
         }
-        .tigo-gate__title {
-          position:relative; z-index:1;
-          font-weight:900; font-size:22px; line-height:1.15; letter-spacing:-0.2px;
+        .gate-hint {
+          text-align:center;
+          color: #64748B; font-size: 13.5px; line-height: 1.5;
+          margin: 0 0 22px 0;
         }
-        .tigo-gate__body { padding: 24px 32px 28px 32px; }
-        .tigo-gate__hint {
-          color:#475569; font-size:13px; margin: 0 0 14px 0;
+
+        div[data-testid="stForm"] {
+          border: none !important;
+          padding: 0 !important;
+          background: transparent !important;
         }
-        .tigo-gate div[data-baseweb="input"] > div {
+        div[data-testid="stForm"] div[data-baseweb="input"] > div {
           border-radius: 14px !important;
-          border: 1.5px solid #CBD5E1 !important;
-          background:#F8FAFC !important;
-          min-height: 46px;
+          border: 2px solid #E2E8F0 !important;
+          background: #F8FAFC !important;
+          min-height: 52px !important;
+          transition: border-color .15s, background .15s, box-shadow .15s;
         }
-        .tigo-gate div[data-baseweb="input"] input {
-          font-family:'DM Sans','Segoe UI',sans-serif !important;
-          font-size:15px !important;
+        div[data-testid="stForm"] div[data-baseweb="input"] > div:hover {
+          border-color: #CBD5E1 !important;
+          background: #FFFFFF !important;
         }
-        .tigo-gate .stButton > button {
-          width:100%; min-height:46px; border-radius:9999px !important;
-          background:#001EB4 !important; color:#fff !important;
-          border:2px solid #001EB4 !important;
-          font-family:'DM Sans','Segoe UI',sans-serif !important;
-          font-weight:800 !important; font-size:14px !important;
-          letter-spacing:.3px;
+        div[data-testid="stForm"] div[data-baseweb="input"] > div:focus-within {
+          border-color: #001EB4 !important;
+          background: #FFFFFF !important;
+          box-shadow: 0 0 0 4px rgba(0,30,180,.14) !important;
         }
-        .tigo-gate .stButton > button:hover {
-          background:#0026E5 !important; border-color:#0026E5 !important;
+        div[data-testid="stForm"] div[data-baseweb="input"] input {
+          font-family: 'DM Sans','Segoe UI',sans-serif !important;
+          font-size: 15px !important;
+          font-weight: 500 !important;
+          color: #0B1220 !important;
+          padding: 0 16px !important;
         }
-        .tigo-gate__foot {
-          text-align:center; color:#94A3B8; font-size:11px;
-          padding: 14px 0 0 0; letter-spacing:1px; text-transform:uppercase; font-weight:700;
+        div[data-testid="stForm"] div[data-baseweb="input"] input::placeholder {
+          color: #94A3B8 !important;
+          font-weight: 400 !important;
+        }
+
+        div[data-testid="stForm"] .stFormSubmitButton { margin-top: 6px; }
+        div[data-testid="stForm"] .stFormSubmitButton > button {
+          width: 100% !important;
+          min-height: 48px !important;
+          border-radius: 9999px !important;
+          background: linear-gradient(135deg, #001EB4 0%, #00005A 100%) !important;
+          color: #FFFFFF !important;
+          border: none !important;
+          font-family: 'DM Sans','Segoe UI',sans-serif !important;
+          font-weight: 700 !important;
+          font-size: 11px !important;
+          letter-spacing: .8px;
+          text-transform: uppercase;
+          white-space: nowrap;
+          box-shadow: 0 8px 20px rgba(0,30,180,.35);
+          transition: transform .08s, box-shadow .15s, filter .15s;
+        }
+        div[data-testid="stForm"] .stFormSubmitButton > button > div,
+        div[data-testid="stForm"] .stFormSubmitButton > button p {
+          font-size: 11px !important;
+          font-weight: 700 !important;
+          letter-spacing: .8px !important;
+          white-space: nowrap !important;
+        }
+        div[data-testid="stForm"] .stFormSubmitButton > button:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 12px 26px rgba(0,30,180,.45);
+          filter: brightness(1.05);
+        }
+        div[data-testid="stForm"] .stFormSubmitButton > button:active {
+          transform: translateY(0);
+          box-shadow: 0 6px 14px rgba(0,30,180,.35);
+        }
+
+        div[data-testid="stAlert"] {
+          border-radius: 14px !important;
+          border: none !important;
+          margin-top: 12px !important;
+        }
+
+        .gate-foot {
+          text-align:center;
+          color: #94A3B8; font-size: 10px;
+          margin-top: 22px;
+          letter-spacing: 2px; text-transform: uppercase; font-weight: 700;
+        }
+        .gate-foot__dot {
+          display:inline-block; width:4px; height:4px; border-radius:50%;
+          background:#CBD5E1; margin: 0 8px; vertical-align: middle;
         }
         </style>
         """,
@@ -126,20 +232,25 @@ def _password_gate() -> None:
     )
 
     st.markdown(
-        """
-        <div class="tigo-gate">
-          <div class="tigo-gate__head">
-            <div class="tigo-gate__ey">Design · Regional</div>
-            <div class="tigo-gate__title">Planificador de diseño</div>
-          </div>
-          <div class="tigo-gate__body">
-            <p class="tigo-gate__hint">Ingresa la contraseña del equipo para continuar.</p>
+        f"""
+        <div class="gate-brand">
+          <div class="gate-brand__box">{LOGO_TIGO_WHITE}</div>
+        </div>
+        <div class="gate-ey">Design · Regional</div>
+        <div class="gate-title">Planificador de diseño</div>
+        <div class="gate-hint">Ingresa la contraseña del equipo para continuar.</div>
         """,
         unsafe_allow_html=True,
     )
 
     with st.form("_pwd_form", clear_on_submit=False):
-        pwd = st.text_input("Contraseña", type="password", key="_pwd_input", label_visibility="collapsed", placeholder="Contraseña")
+        pwd = st.text_input(
+            "Contraseña",
+            type="password",
+            key="_pwd_input",
+            label_visibility="collapsed",
+            placeholder="Contraseña",
+        )
         submitted = st.form_submit_button("Entrar")
 
     if submitted:
@@ -150,11 +261,7 @@ def _password_gate() -> None:
             st.error("Contraseña incorrecta.")
 
     st.markdown(
-        """
-            <div class="tigo-gate__foot">Internal · Tigo</div>
-          </div>
-        </div>
-        """,
+        '<div class="gate-foot">Internal<span class="gate-foot__dot"></span>Tigo</div>',
         unsafe_allow_html=True,
     )
     st.stop()
@@ -292,7 +399,7 @@ def _to_timeline_df(tasks: pd.DataFrame) -> pd.DataFrame:
     df["_dur"] = pd.to_numeric(df["duration"], errors="coerce").fillna(TASK_FALLBACK_HOURS)
     df["_end"] = df["_start"] + pd.to_timedelta(df["_dur"], unit="h")
     df = df[df["_start"].notna()]
-    df["Estado"] = df.get("status", "").fillna("").astype(str)
+    df["Estado"] = df.get("status", "").fillna("").astype(str).map(lambda s: STATUS_DISPLAY.get(s, s))
     df["Tarea"] = df.get("text", "").fillna("").astype(str)
     df["Colaborador"] = df["resource_name"].fillna(df["resource_id"]).astype(str)
     return df
@@ -303,7 +410,8 @@ def _plot_gantt(tasks: pd.DataFrame, key: str) -> None:
     if df.empty:
         st.info("No hay tareas para mostrar con los filtros actuales.")
         return
-    color_map = {**STATUS_COLORS, "": DEFAULT_STATUS_COLOR}
+    color_map = {STATUS_DISPLAY.get(k, k): v for k, v in STATUS_COLORS.items()}
+    color_map[""] = DEFAULT_STATUS_COLOR
     fig = px.timeline(
         df,
         x_start="_start",
@@ -366,7 +474,7 @@ def _build_display_from_planned(pt: pd.DataFrame) -> pd.DataFrame:
         "Proyecto": d.get("business_unit", pd.Series([""] * len(d))).fillna("").astype(str),
         "Tarea": d.get("text", pd.Series([""] * len(d))).fillna("").astype(str),
         "ID de tarea": d.get("id", pd.Series([""] * len(d))).astype(str),
-        "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str).map(lambda s: STATUS_DISPLAY.get(s, s)),
         "Fecha de inicio": d.get("start_date", pd.Series([""] * len(d))).fillna("").astype(str),
         "Finalización": ends.dt.strftime("%Y-%m-%d %H:%M").fillna(""),
         "Categoría": d.get("typeTask_name", pd.Series([""] * len(d))).fillna("").astype(str),
@@ -384,7 +492,7 @@ def _build_display_from_aplan(ap: pd.DataFrame) -> pd.DataFrame:
         "Proyecto": d.get("project_name", pd.Series([""] * len(d))).fillna("").astype(str),
         "Tarea": d.get("title", pd.Series([""] * len(d))).fillna("").astype(str),
         "ID de tarea": d.get("id", pd.Series([""] * len(d))).astype(str),
-        "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str),
+        "Estado": d.get("status", pd.Series([""] * len(d))).fillna("").astype(str).map(lambda s: STATUS_DISPLAY.get(s, s)),
         "Fecha de inicio": d.get("datetime", pd.Series([""] * len(d))).fillna("").astype(str),
         "Finalización": d.get("deadline", pd.Series([""] * len(d))).fillna("").astype(str),
         "Categoría": d.get("typeTask_name", pd.Series([""] * len(d))).fillna("").astype(str),
@@ -401,30 +509,27 @@ def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
         "<div class='col-filter-bar-label'>Filtrar por columna</div>",
         unsafe_allow_html=True,
     )
+    st.markdown(f"<div class='col-filter-bar' data-key='{key_prefix}'></div>", unsafe_allow_html=True)
     header_cols = st.columns(len(DISPLAY_COLS), gap="small")
     active: dict[str, tuple[str, object]] = {}
     for i, col in enumerate(DISPLAY_COLS):
         state_key = f"{key_prefix}_flt_{col}"
-        cur = st.session_state.get(state_key)
-        has_val = bool(cur) if not isinstance(cur, list) else len(cur) > 0
-        label = f"● {col}" if has_val else col
         with header_cols[i]:
-            with st.popover(label, use_container_width=True):
-                if col in _MULTISELECT_COLS:
-                    opts = sorted({x for x in df[col].dropna().astype(str).tolist() if x.strip()})
-                    sel = st.multiselect(
-                        col, opts, key=state_key,
-                        placeholder="Todos", label_visibility="collapsed",
-                    )
-                    if sel:
-                        active[col] = ("in", sel)
-                else:
-                    val = st.text_input(
-                        col, key=state_key,
-                        placeholder=f"Buscar en {col}…", label_visibility="collapsed",
-                    )
-                    if val:
-                        active[col] = ("contains", val)
+            if col in _MULTISELECT_COLS:
+                opts = sorted({x for x in df[col].dropna().astype(str).tolist() if x.strip()})
+                sel = st.multiselect(
+                    col, opts, key=state_key,
+                    placeholder=col, label_visibility="collapsed",
+                )
+                if sel:
+                    active[col] = ("in", sel)
+            else:
+                val = st.text_input(
+                    col, key=state_key,
+                    placeholder=col, label_visibility="collapsed",
+                )
+                if val:
+                    active[col] = ("contains", val)
     out = df
     for col, (kind, val) in active.items():
         if kind == "in":
@@ -434,9 +539,13 @@ def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     return out
 
 
+_STATUS_LABEL_TO_CODE = {v: k for k, v in STATUS_DISPLAY.items()}
+
+
 def _style_by_status(df: pd.DataFrame):
     def _row_style(row):
-        s = str(row.get("Estado", "")).strip().lower().replace(" ", "_")
+        raw = str(row.get("Estado", "")).strip()
+        s = _STATUS_LABEL_TO_CODE.get(raw, raw.lower().replace(" ", "_"))
         color = STATUS_COLORS.get(s, "")
         if not color or not color.startswith("#") or len(color) < 7:
             return [""] * len(row)
@@ -473,31 +582,6 @@ def _render_task_table(df_display: pd.DataFrame, key_prefix: str) -> pd.DataFram
 
 
 # ---------- Global styles (Tigo Design System v2) ----------
-
-ASSETS_DIR = APP_DIR / "assets"
-
-
-def _read_svg(name: str) -> str:
-    p = ASSETS_DIR / "icons" / name
-    try:
-        return p.read_text(encoding="utf-8")
-    except Exception:
-        return ""
-
-
-def _svg_recolor(svg: str, fill: str) -> str:
-    import re as _re
-    if not svg:
-        return svg
-    svg = _re.sub(r"<style[\s\S]*?</style>", "", svg)
-    svg = _re.sub(r'\sclass="[^"]*"', "", svg)
-    svg = _re.sub(r'\sfill="[^"]*"', "", svg)
-    svg = svg.replace("<svg ", f'<svg fill="{fill}" ', 1)
-    return svg
-
-
-LOGO_TIGO_WHITE = _svg_recolor(_read_svg("logo-tigo.svg"), "#FFFFFF")
-GO_WHITE = _svg_recolor(_read_svg("go.svg"), "#FFFFFF")
 
 
 def _inject_css(path: Path) -> None:
@@ -756,7 +840,7 @@ with st.sidebar:
                     ("Tipo de tarea", r.get("typeTask_name", "")),
                     ("Etiqueta", r.get("tag", "")),
                     ("País", r.get("pais", "")),
-                    ("Estado", r.get("status", "")),
+                    ("Estado", STATUS_DISPLAY.get(str(r.get("status", "")), r.get("status", ""))),
                     ("Prioridad", r.get("priority", "")),
                 ]:
                     st.markdown(f"**{k}:** {v}")
