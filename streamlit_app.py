@@ -539,14 +539,13 @@ def _column_filters(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
     return out
 
 
-_STATUS_LABEL_TO_CODE = {v: k for k, v in STATUS_DISPLAY.items()}
+_LABEL_TO_COLOR = {STATUS_DISPLAY.get(code, code): color for code, color in STATUS_COLORS.items()}
 
 
 def _style_by_status(df: pd.DataFrame):
     def _row_style(row):
-        raw = str(row.get("Estado", "")).strip()
-        s = _STATUS_LABEL_TO_CODE.get(raw, raw.lower().replace(" ", "_"))
-        color = STATUS_COLORS.get(s, "")
+        label = str(row.get("Estado", "")).strip()
+        color = _LABEL_TO_COLOR.get(label) or STATUS_COLORS.get(label.lower().replace(" ", "_"), "")
         if not color or not color.startswith("#") or len(color) < 7:
             return [""] * len(row)
         try:
