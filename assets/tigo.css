@@ -274,8 +274,8 @@ div[data-testid="stAlert"] {
 }
 
 .detail-collab-table + div[data-testid="stDataFrame"] * {
-  font-size: 11px !important;
+  font-size: 10px !important;
 }
 .detail-collab-table + div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
-  font-size: 11px !important;
+  font-size: 10px !important;
 }

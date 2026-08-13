@@ -481,6 +481,38 @@ def _tasks_for_frappe_gantt(df: pd.DataFrame) -> list[dict]:
     return out
 
 
+def _bh_next_moment(dt: pd.Timestamp) -> pd.Timestamp:
+    if pd.isna(dt):
+        return dt
+    while dt.weekday() >= 5:
+        dt = (dt + pd.Timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    if dt.hour < 9:
+        dt = dt.replace(hour=9, minute=0, second=0, microsecond=0)
+    if dt.hour >= 17 or (dt.hour == 17 and dt.minute > 0):
+        dt = (dt + pd.Timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        while dt.weekday() >= 5:
+            dt = (dt + pd.Timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    return dt
+
+
+def _bh_end(start_dt: pd.Timestamp, work_hours: float) -> pd.Timestamp:
+    if pd.isna(start_dt) or work_hours is None or work_hours <= 0:
+        return start_dt
+    remaining = float(work_hours)
+    cur = _bh_next_moment(pd.Timestamp(start_dt))
+    while remaining > 0:
+        day_end = cur.replace(hour=17, minute=0, second=0, microsecond=0)
+        avail = (day_end - cur).total_seconds() / 3600.0
+        if avail <= 0:
+            cur = _bh_next_moment(cur + pd.Timedelta(minutes=1))
+            continue
+        if remaining <= avail:
+            return cur + pd.Timedelta(hours=remaining)
+        remaining -= avail
+        cur = _bh_next_moment((cur + pd.Timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0))
+    return cur
+
+
 def _apply_date_change(kind: str, tid: str, iso_start: str, iso_end: str) -> None:
     ss_key = "planned_tasks" if kind == "final" else "a_plan"
     df = st.session_state.get(ss_key)
@@ -1158,25 +1190,38 @@ elif active_tab == "Disponibilidad":
                 p = pt.copy()
                 p["start_dt"] = pd.to_datetime(p["start_date"], errors="coerce")
                 p["dur_h"] = pd.to_numeric(p["duration"], errors="coerce").fillna(TASK_FALLBACK_HOURS)
-                p["end_dt"] = p["start_dt"] + pd.to_timedelta(p["dur_h"], unit="h")
+                p["work_h"] = p["dur_h"] * WORK_HOURS_RATIO
+                p["end_bh"] = [
+                    _bh_end(s, wh) for s, wh in zip(p["start_dt"], p["work_h"])
+                ]
                 agg = p.groupby(["resource_id", "resource_name"], dropna=False).agg(
-                    libre_desde=("end_dt", "max"),
-                    horas=("dur_h", lambda s: (s.sum() * WORK_HOURS_RATIO)),
+                    libre_desde=("end_bh", "max"),
+                    horas=("work_h", "sum"),
                     tareas=("id", "count"),
                 ).reset_index()
                 agg["horas"] = agg["horas"].round(1)
                 table = resources.merge(agg, on=["resource_id", "resource_name"], how="left")
-                table["libre_desde"] = table["libre_desde"].dt.strftime("%Y-%m-%d %H:%M")
+                table["libre_desde"] = pd.to_datetime(table["libre_desde"], errors="coerce").dt.strftime("%y-%m-%d %H:%M")
                 table["horas"] = table["horas"].fillna(0.0)
                 table["tareas"] = table["tareas"].fillna(0).astype(int)
                 table = table.rename(columns={
                     "resource_name": "Colaborador",
                     "libre_desde": "Libre desde",
-                    "horas": "Horas pendientes",
+                    "horas": "Horas pend.",
                     "tareas": "# Tareas",
-                })[["Colaborador", "Libre desde", "Horas pendientes", "# Tareas"]]
+                })[["Colaborador", "Libre desde", "Horas pend.", "# Tareas"]]
             st.markdown("<div class='detail-collab-table'></div>", unsafe_allow_html=True)
-            st.dataframe(table, hide_index=True, height=440)
+            st.dataframe(
+                table,
+                hide_index=True,
+                height=440,
+                column_config={
+                    "Colaborador": st.column_config.TextColumn(width="small"),
+                    "Libre desde": st.column_config.TextColumn(width="small"),
+                    "Horas pend.": st.column_config.NumberColumn(width="small", format="%.1f"),
+                    "# Tareas": st.column_config.NumberColumn(width="small"),
+                },
+            )
 
 # ---- Estadísticas ----
 elif active_tab == "Estadísticas":
