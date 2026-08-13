@@ -288,6 +288,7 @@ def _init_state() -> None:
     ss.setdefault("filter_resource", ALL_SENTINEL)
     ss.setdefault("filter_country", [])
     ss.setdefault("filter_objective", ALL_SENTINEL)
+    ss.setdefault("filter_task_type", "Todas")
     ss.setdefault("filter_business_unit", ALL_SENTINEL)
     ss.setdefault("filter_date_from", None)
     ss.setdefault("filter_date_to", None)
@@ -388,6 +389,10 @@ def _prepare_aplan_gantt_view(ap: pd.DataFrame) -> pd.DataFrame:
         date_from=st.session_state["filter_date_from"],
         date_to=st.session_state["filter_date_to"],
     )
+    type_choice = st.session_state.get("filter_task_type", "Todas")
+    if type_choice != "Todas" and "typeTask_name" in filtered.columns:
+        is_creativ = filtered["typeTask_name"].fillna("").astype(str).str.contains("creativ", case=False, na=False)
+        filtered = filtered[is_creativ] if type_choice == "Creatividad" else filtered[~is_creativ]
     return filtered.sort_values(["resource_id", "start_date", "id"]).reset_index(drop=True)
 
 
@@ -663,6 +668,12 @@ with st.sidebar:
         options=[ALL_SENTINEL, *bu_choices],
         format_func=lambda v: "Todas" if v == ALL_SENTINEL else v,
         key="filter_business_unit",
+    )
+
+    st.selectbox(
+        "Tipo de tarea",
+        options=["Todas", "Creatividad", "No creatividad"],
+        key="filter_task_type",
     )
 
     col_df, col_dt = st.columns(2)
@@ -1007,31 +1018,18 @@ elif active_tab == "Disponibilidad":
     pt = _filtered_planned_tasks()
     resources = st.session_state["planned_resources"]
 
-    if not pt.empty:
-        col_type, col_status = st.columns([1, 2])
-        with col_type:
-            type_choice = st.radio(
-                "Tipo de tarea",
-                ["Todas", "Creatividad", "No creatividad"],
-                horizontal=True,
-                key="disp_type_filter",
-            )
-        with col_status:
-            if "status" in pt.columns:
-                codes_in_data = [c for c in STATUS_DISPLAY.keys() if c in set(pt["status"].dropna().astype(str))]
-                labels_in_data = [STATUS_DISPLAY[c] for c in codes_in_data]
-                label_to_code = {STATUS_DISPLAY[c]: c for c in codes_in_data}
-                picked_labels = st.multiselect(
-                    "Filtrar por estado",
-                    labels_in_data,
-                    default=labels_in_data,
-                    key="disp_status_filter",
-                )
-                picked_codes = [label_to_code[lbl] for lbl in picked_labels]
-                pt = pt[pt["status"].astype(str).isin(picked_codes)]
-        if "typeTask_name" in pt.columns and type_choice != "Todas":
-            is_creativ = pt["typeTask_name"].fillna("").astype(str).str.contains("creativ", case=False, na=False)
-            pt = pt[is_creativ] if type_choice == "Creatividad" else pt[~is_creativ]
+    if not pt.empty and "status" in pt.columns:
+        codes_in_data = [c for c in STATUS_DISPLAY.keys() if c in set(pt["status"].dropna().astype(str))]
+        labels_in_data = [STATUS_DISPLAY[c] for c in codes_in_data]
+        label_to_code = {STATUS_DISPLAY[c]: c for c in codes_in_data}
+        picked_labels = st.multiselect(
+            "Filtrar por estado",
+            labels_in_data,
+            default=labels_in_data,
+            key="disp_status_filter",
+        )
+        picked_codes = [label_to_code[lbl] for lbl in picked_labels]
+        pt = pt[pt["status"].astype(str).isin(picked_codes)]
 
     col_pie, col_tbl = st.columns([1, 1])
 
@@ -1153,6 +1151,10 @@ elif active_tab == "Estadísticas":
             date_from=st.session_state["filter_date_from"],
             date_to=st.session_state["filter_date_to"],
         )
+        _tt = st.session_state.get("filter_task_type", "Todas")
+        if _tt != "Todas" and "typeTask_name" in df.columns:
+            _mask = df["typeTask_name"].fillna("").astype(str).str.contains("creativ", case=False, na=False)
+            df = df[_mask] if _tt == "Creatividad" else df[~_mask]
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1204,7 +1206,6 @@ elif active_tab == "Estadísticas":
             else:
                 order = d.groupby("combo")["dur_h"].median().sort_values(ascending=False).index.tolist()
                 name_col = "title" if "title" in d.columns else ("text" if "text" in d.columns else None)
-                hover_kwargs = {"hover_data": {name_col: True, "combo": False}} if name_col else {}
                 fig = px.box(
                     d, x="dur_h", y="combo",
                     color="combo",
@@ -1212,8 +1213,12 @@ elif active_tab == "Estadísticas":
                     category_orders={"combo": order},
                     points="outliers",
                     orientation="h",
-                    **hover_kwargs,
+                    custom_data=[name_col] if name_col else None,
                 )
+                if name_col:
+                    fig.update_traces(
+                        hovertemplate="Tarea: %{customdata[0]}<br>Combo: %{y}<br>Duración: %{x:.1f} h<extra></extra>"
+                    )
                 fig.update_layout(
                     height=max(380, 28 * len(order) + 80),
                     xaxis_title="Duración (h)", yaxis_title="",
