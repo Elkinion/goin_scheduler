@@ -37,6 +37,7 @@ from domain.payload import (
     build_push_payload_original,
     detect_business_unit,
 )
+from components.frappe_gantt import frappe_gantt
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -450,6 +451,57 @@ def _to_excel_bytes(df: pd.DataFrame) -> bytes:
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="tasks")
     return buf.getvalue()
+
+
+def _tasks_for_frappe_gantt(df: pd.DataFrame) -> list[dict]:
+    if df is None or df.empty:
+        return []
+    d = df.copy().reset_index(drop=True)
+    starts = pd.to_datetime(d["start_date"], errors="coerce")
+    durs = pd.to_numeric(d["duration"], errors="coerce").fillna(TASK_FALLBACK_HOURS)
+    ends = starts + pd.to_timedelta(durs, unit="h")
+    out = []
+    for i in range(len(d)):
+        s = starts.iloc[i]; e = ends.iloc[i]
+        if pd.isna(s) or pd.isna(e):
+            continue
+        if (e - s).total_seconds() < 3600:
+            e = s + pd.Timedelta(hours=1)
+        row = d.iloc[i]
+        name = str(row.get("text") or row.get("title") or "")
+        rid = str(row.get("resource_name") or row.get("resource_id") or "")
+        display = f"{name[:60]} · {rid}" if rid else name[:60]
+        out.append({
+            "id": str(row.get("id", "")),
+            "name": display,
+            "start": s.strftime("%Y-%m-%d"),
+            "end": e.strftime("%Y-%m-%d"),
+            "progress": 0,
+        })
+    return out
+
+
+def _apply_date_change(kind: str, tid: str, iso_start: str, iso_end: str) -> None:
+    ss_key = "planned_tasks" if kind == "final" else "a_plan"
+    df = st.session_state.get(ss_key)
+    if df is None or df.empty:
+        return
+    mask = df["id"].astype(str) == str(tid)
+    if not mask.any():
+        return
+    new_start = pd.to_datetime(iso_start, errors="coerce")
+    new_end = pd.to_datetime(iso_end, errors="coerce")
+    if pd.isna(new_start) or pd.isna(new_end):
+        return
+    df = df.copy()
+    if kind == "final":
+        df.loc[mask, "start_date"] = new_start.strftime("%Y-%m-%d %H:%M")
+        dur_h = max(1.0, (new_end - new_start).total_seconds() / 3600.0)
+        df.loc[mask, "duration"] = dur_h
+    else:
+        df.loc[mask, "datetime"] = new_start.strftime("%Y-%m-%d %H:%M:%S")
+        df.loc[mask, "deadline"] = new_end.strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state[ss_key] = df
 
 
 # ---------- Tabla estandar (8 columnas) ----------
@@ -923,8 +975,6 @@ st.markdown(
 
 tab_labels = [
     "Cronograma editable",
-    "Gantt interactivo",
-    "Plan original",
     "Disponibilidad",
     "Estadísticas",
     "Notas por país",
@@ -939,17 +989,52 @@ active_tab = st.segmented_control(
 if active_tab is None:
     active_tab = tab_labels[0]
 
-# ---- Cronograma editable ----
+# ---- Cronograma editable (Plan inicial | Plan final) ----
 if active_tab == "Cronograma editable":
-    pt_view = _filtered_planned_tasks()
-    _plot_gantt(pt_view, key="gantt_main")
+    kind = st.segmented_control(
+        "Plan",
+        options=["Plan final", "Plan inicial"],
+        default=st.session_state.get("_edit_plan_kind", "Plan final"),
+        key="_edit_plan_kind",
+    )
+    if kind is None:
+        kind = "Plan final"
+    is_final = kind == "Plan final"
 
-    st.caption("Tabla del cronograma actual. Haz clic en el nombre de cada columna para filtrar por esa columna.")
+    if is_final:
+        pt_view = _filtered_planned_tasks()
+        st.caption("Arrastra las barras para cambiar fechas del plan final. Los cambios quedan guardados en sesión.")
+    else:
+        pt_view = _prepare_aplan_gantt_view(st.session_state["a_plan"])
+        st.caption("Arrastra las barras para cambiar fechas del plan inicial. Los cambios quedan guardados en sesión.")
+
+    tasks_payload = _tasks_for_frappe_gantt(pt_view)
+    if not tasks_payload:
+        st.info("No hay tareas para mostrar con los filtros actuales.")
+    else:
+        g_key = "gantt_final" if is_final else "gantt_initial"
+        change = frappe_gantt(tasks=tasks_payload, view_mode="Week", height=600, key=g_key)
+        if isinstance(change, dict) and change.get("type") == "date_change":
+            last_key = f"_last_gantt_ts_{g_key}"
+            ts = change.get("ts")
+            if ts and st.session_state.get(last_key) != ts:
+                st.session_state[last_key] = ts
+                _apply_date_change(
+                    "final" if is_final else "initial",
+                    str(change.get("id", "")),
+                    str(change.get("start", "")),
+                    str(change.get("end", "")),
+                )
+                st.rerun()
+
+    st.caption("Tabla del cronograma. Haz clic en el nombre de cada columna para filtrar por esa columna.")
     if pt_view.empty:
         st.info("Sincroniza y dibuja el cronograma para ver las tareas aquí.")
     else:
-        disp = _build_display_from_planned(pt_view)
-        filtered = _render_task_table(disp, key_prefix="tbl_plan")
+        disp = _build_display_from_planned(pt_view) if is_final else _build_display_from_aplan(pt_view)
+        tbl_prefix = "tbl_plan" if is_final else "tbl_aplan"
+        pick_key = "pick_task_main" if is_final else "pick_task_aplan"
+        filtered = _render_task_table(disp, key_prefix=tbl_prefix)
 
         if not filtered.empty:
             picked = st.selectbox(
@@ -960,57 +1045,10 @@ if active_tab == "Cronograma editable":
                     else f"{v} · {filtered.set_index('ID de tarea').loc[v, 'Tarea'][:60]}"
                     if v in filtered["ID de tarea"].values else v
                 ),
-                key="pick_task_main",
+                key=pick_key,
             )
             if picked:
                 st.session_state["selected_id"] = picked
-
-# ---- Gantt interactivo (Plotly, mismo motor que Cronograma editable) ----
-elif active_tab == "Gantt interactivo":
-    pt_view = _filtered_planned_tasks()
-    if pt_view.empty:
-        st.info("Sincroniza y dibuja el cronograma para ver el Gantt.")
-    else:
-        refs = _load_reference_data()
-        email_to_pod = build_email_to_pod(st.session_state["a_plan"], refs["workers_pods"])
-        pt_pod = attach_pod_to_planned(pt_view, email_to_pod)
-        pt_pod = pt_pod.sort_values(["pod", "resource_name", "start_date", "id"]).reset_index(drop=True)
-        st.caption("Vista Gantt agrupada por cápsula (pod). El drag-and-drop no está disponible en Plotly; edita fechas en el tab **Cronograma editable**.")
-        _plot_gantt(pt_pod, key="gantt_interactivo")
-
-# ---- Plan original ----
-elif active_tab == "Plan original":
-    st.caption(
-        "Asignación inicial entregada por el algoritmo. Haz clic en el nombre de cada columna para filtrar por esa columna."
-    )
-    ap_view = _prepare_aplan_gantt_view(st.session_state["a_plan"])
-    _plot_gantt(ap_view, key="gantt_aplan")
-
-    ap_now = st.session_state["a_plan"]
-    if ap_now is None or ap_now.empty:
-        st.info("Sincroniza para cargar el plan original.")
-    else:
-        visible_ids = set(ap_view["id"].astype(str)) if not ap_view.empty else set()
-        visible = ap_now[ap_now["id"].astype(str).isin(visible_ids)].copy() if visible_ids else pd.DataFrame(columns=ap_now.columns)
-        if visible.empty:
-            st.info("No hay tareas visibles con los filtros actuales.")
-        else:
-            disp = _build_display_from_aplan(visible)
-            filtered = _render_task_table(disp, key_prefix="tbl_aplan")
-
-            if not filtered.empty:
-                picked = st.selectbox(
-                    "Ver detalle de tarea",
-                    options=[""] + filtered["ID de tarea"].tolist(),
-                    format_func=lambda v: (
-                        "(selecciona una tarea)" if v == ""
-                        else f"{v} · {filtered.set_index('ID de tarea').loc[v, 'Tarea'][:60]}"
-                        if v in filtered["ID de tarea"].values else v
-                    ),
-                    key="pick_task_aplan",
-                )
-                if picked:
-                    st.session_state["selected_id"] = picked
 
 # ---- Disponibilidad ----
 elif active_tab == "Disponibilidad":
@@ -1114,13 +1152,24 @@ elif active_tab == "Disponibilidad":
 
 # ---- Estadísticas ----
 elif active_tab == "Estadísticas":
-    st.caption("Resumen del plan actual. Se aplican los filtros del panel izquierdo.")
-    ap_now = st.session_state["a_plan"]
-    if ap_now is None or ap_now.empty:
+    st.caption("Resumen del plan seleccionado. Se aplican los filtros del panel izquierdo.")
+
+    stats_kind = st.segmented_control(
+        "Plan",
+        options=["Plan final", "Plan inicial"],
+        default=st.session_state.get("_stats_plan_kind", "Plan final"),
+        key="_stats_plan_kind",
+    )
+    if stats_kind is None:
+        stats_kind = "Plan final"
+    stats_is_final = stats_kind == "Plan final"
+
+    source_df = st.session_state["planned_tasks"] if stats_is_final else st.session_state["a_plan"]
+    if source_df is None or source_df.empty:
         st.info("Sincroniza para ver estadísticas.")
     else:
-        base = ap_now.copy()
-        for col in ("tag", "project_name", "skill_names", "skill_main", "typeTask_name", "datetime", "deadline"):
+        base = source_df.copy()
+        for col in ("tag", "project_name", "skill_names", "skill_main", "typeTask_name"):
             if col not in base.columns:
                 base[col] = ""
         for col in ("collab_email_plan", "collab_email"):
@@ -1130,17 +1179,27 @@ elif active_tab == "Estadísticas":
             base["collab_email_n"] = 0
         ep = base["collab_email_plan"].fillna("").astype(str).str.strip()
         ec = base["collab_email"].fillna("").astype(str).str.strip()
-        base["resource_id"] = ep.where(ep != "", ec).replace("", "SIN_ASIGNAR")
-        base["resource_name"] = base["resource_id"]
-        base["objetivo"] = detect_business_unit(base["skill_names"])
-        base["business_unit"] = base["project_name"].fillna("").astype(str)
-        base["pais"] = extract_country_series(base["tag"])
+        rid_fallback = ep.where(ep != "", ec).replace("", "SIN_ASIGNAR")
+        if "resource_id" not in base.columns or base["resource_id"].isna().all():
+            base["resource_id"] = rid_fallback
+        else:
+            base["resource_id"] = base["resource_id"].fillna(rid_fallback).replace("", "SIN_ASIGNAR")
+        base["resource_name"] = base.get("resource_name", base["resource_id"]).fillna(base["resource_id"])
+        if "objetivo" not in base.columns:
+            base["objetivo"] = detect_business_unit(base["skill_names"])
+        if "business_unit" not in base.columns:
+            base["business_unit"] = base["project_name"].fillna("").astype(str)
+        if "pais" not in base.columns:
+            base["pais"] = extract_country_series(base["tag"])
         base["skill_bucket"] = base["skill_main"].fillna("").astype(str)
         base["typeTask_name"] = base["typeTask_name"].fillna("").astype(str)
         base["combo"] = (base["typeTask_name"].replace("", "NA") + " | " + base["skill_bucket"].replace("", "NA"))
-        start = pd.to_datetime(base["datetime"], errors="coerce")
-        end = pd.to_datetime(base["deadline"], errors="coerce")
-        base["dur_h"] = (end - start).dt.total_seconds() / 3600.0
+        if stats_is_final and "duration" in base.columns:
+            base["dur_h"] = pd.to_numeric(base["duration"], errors="coerce")
+        else:
+            start = pd.to_datetime(base.get("datetime", ""), errors="coerce")
+            end = pd.to_datetime(base.get("deadline", ""), errors="coerce")
+            base["dur_h"] = (end - start).dt.total_seconds() / 3600.0
 
         df = apply_gantt_filters(
             base,
