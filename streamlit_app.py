@@ -975,6 +975,7 @@ st.markdown(
 
 tab_labels = [
     "Cronograma editable",
+    "Gantt (vista)",
     "Disponibilidad",
     "Estadísticas",
     "Notas por país",
@@ -1049,6 +1050,33 @@ if active_tab == "Cronograma editable":
             )
             if picked:
                 st.session_state["selected_id"] = picked
+
+# ---- Gantt (vista, solo lectura) ----
+elif active_tab == "Gantt (vista)":
+    view_kind = st.segmented_control(
+        "Plan",
+        options=["Plan final", "Plan inicial"],
+        default=st.session_state.get("_view_plan_kind", "Plan final"),
+        key="_view_plan_kind",
+    )
+    if view_kind is None:
+        view_kind = "Plan final"
+
+    if view_kind == "Plan final":
+        pt_view = _filtered_planned_tasks()
+        if pt_view.empty:
+            st.info("Sincroniza y dibuja el cronograma para ver el Gantt.")
+        else:
+            refs = _load_reference_data()
+            email_to_pod = build_email_to_pod(st.session_state["a_plan"], refs["workers_pods"])
+            pt_pod = attach_pod_to_planned(pt_view, email_to_pod)
+            pt_pod = pt_pod.sort_values(["pod", "resource_name", "start_date", "id"]).reset_index(drop=True)
+            st.caption("Vista Gantt del plan final agrupada por cápsula (pod). Solo lectura; edita fechas en **Cronograma editable**.")
+            _plot_gantt(pt_pod, key="gantt_view_final")
+    else:
+        st.caption("Vista Gantt del plan inicial. Solo lectura; edita fechas en **Cronograma editable**.")
+        ap_view = _prepare_aplan_gantt_view(st.session_state["a_plan"])
+        _plot_gantt(ap_view, key="gantt_view_initial")
 
 # ---- Disponibilidad ----
 elif active_tab == "Disponibilidad":
