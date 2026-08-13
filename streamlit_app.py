@@ -1007,18 +1007,31 @@ elif active_tab == "Disponibilidad":
     pt = _filtered_planned_tasks()
     resources = st.session_state["planned_resources"]
 
-    if not pt.empty and "status" in pt.columns:
-        codes_in_data = [c for c in STATUS_DISPLAY.keys() if c in set(pt["status"].dropna().astype(str))]
-        labels_in_data = [STATUS_DISPLAY[c] for c in codes_in_data]
-        label_to_code = {STATUS_DISPLAY[c]: c for c in codes_in_data}
-        picked_labels = st.multiselect(
-            "Filtrar por estado",
-            labels_in_data,
-            default=labels_in_data,
-            key="disp_status_filter",
-        )
-        picked_codes = [label_to_code[lbl] for lbl in picked_labels]
-        pt = pt[pt["status"].astype(str).isin(picked_codes)]
+    if not pt.empty:
+        col_type, col_status = st.columns([1, 2])
+        with col_type:
+            type_choice = st.radio(
+                "Tipo de tarea",
+                ["Todas", "Creatividad", "No creatividad"],
+                horizontal=True,
+                key="disp_type_filter",
+            )
+        with col_status:
+            if "status" in pt.columns:
+                codes_in_data = [c for c in STATUS_DISPLAY.keys() if c in set(pt["status"].dropna().astype(str))]
+                labels_in_data = [STATUS_DISPLAY[c] for c in codes_in_data]
+                label_to_code = {STATUS_DISPLAY[c]: c for c in codes_in_data}
+                picked_labels = st.multiselect(
+                    "Filtrar por estado",
+                    labels_in_data,
+                    default=labels_in_data,
+                    key="disp_status_filter",
+                )
+                picked_codes = [label_to_code[lbl] for lbl in picked_labels]
+                pt = pt[pt["status"].astype(str).isin(picked_codes)]
+        if "typeTask_name" in pt.columns and type_choice != "Todas":
+            is_creativ = pt["typeTask_name"].fillna("").astype(str).str.contains("creativ", case=False, na=False)
+            pt = pt[is_creativ] if type_choice == "Creatividad" else pt[~is_creativ]
 
     col_pie, col_tbl = st.columns([1, 1])
 
@@ -1098,6 +1111,7 @@ elif active_tab == "Disponibilidad":
                     "horas": "Horas pendientes",
                     "tareas": "# Tareas",
                 })[["Colaborador", "Libre desde", "Horas pendientes", "# Tareas"]]
+            st.markdown("<div class='detail-collab-table'></div>", unsafe_allow_html=True)
             st.dataframe(table, hide_index=True, height=440)
 
 # ---- Estadísticas ----
@@ -1189,6 +1203,8 @@ elif active_tab == "Estadísticas":
                 st.info("Sin datos.")
             else:
                 order = d.groupby("combo")["dur_h"].median().sort_values(ascending=False).index.tolist()
+                name_col = "title" if "title" in d.columns else ("text" if "text" in d.columns else None)
+                hover_kwargs = {"hover_data": {name_col: True, "combo": False}} if name_col else {}
                 fig = px.box(
                     d, x="dur_h", y="combo",
                     color="combo",
@@ -1196,6 +1212,7 @@ elif active_tab == "Estadísticas":
                     category_orders={"combo": order},
                     points="outliers",
                     orientation="h",
+                    **hover_kwargs,
                 )
                 fig.update_layout(
                     height=max(380, 28 * len(order) + 80),

@@ -272,3 +272,10 @@ div[data-testid="stAlert"] {
   border-radius: var(--r-card) !important;
   border: none !important;
 }
+
+.detail-collab-table + div[data-testid="stDataFrame"] * {
+  font-size: 11px !important;
+}
+.detail-collab-table + div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
+  font-size: 11px !important;
+}
