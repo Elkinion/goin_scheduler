@@ -279,3 +279,14 @@ div[data-testid="stAlert"] {
 .detail-collab-table + div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
   font-size: 10px !important;
 }
+
+.detail-collab-table + div[data-testid="stDataFrame"] [role="gridcell"],
+.detail-collab-table + div[data-testid="stDataFrame"] [role="columnheader"] {
+  text-align: center !important;
+  justify-content: center !important;
+}
+.detail-collab-table + div[data-testid="stDataFrame"] [role="gridcell"][aria-colindex="1"],
+.detail-collab-table + div[data-testid="stDataFrame"] [role="columnheader"][aria-colindex="1"] {
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
