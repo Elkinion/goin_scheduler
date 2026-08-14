@@ -397,6 +397,15 @@ def _prepare_aplan_gantt_view(ap: pd.DataFrame) -> pd.DataFrame:
     return filtered.sort_values(["resource_id", "start_date", "id"]).reset_index(drop=True)
 
 
+def _clean_collab_series(s: pd.Series) -> pd.Series:
+    return (
+        s.astype(str)
+        .str.replace(r"@millicom\.com", "", regex=True, case=False)
+        .str.replace(".", " ", regex=False)
+        .str.title()
+    )
+
+
 def _to_timeline_df(tasks: pd.DataFrame) -> pd.DataFrame:
     if tasks is None or tasks.empty:
         return pd.DataFrame()
@@ -407,7 +416,7 @@ def _to_timeline_df(tasks: pd.DataFrame) -> pd.DataFrame:
     df = df[df["_start"].notna()]
     df["Estado"] = df.get("status", "").fillna("").astype(str).map(lambda s: STATUS_DISPLAY.get(s, s))
     df["Tarea"] = df.get("text", "").fillna("").astype(str)
-    df["Colaborador"] = df["resource_name"].fillna(df["resource_id"]).astype(str)
+    df["Colaborador"] = _clean_collab_series(df["resource_name"].fillna(df["resource_id"]))
     return df
 
 
@@ -1147,7 +1156,7 @@ elif active_tab == "Disponibilidad":
             if pie.empty:
                 st.info("No hay horas pendientes.")
             else:
-                pie["label"] = pie["resource_name"] + " · " + pie["horas"].astype(str) + "h"
+                pie["label"] = _clean_collab_series(pie["resource_name"]) + " · " + pie["horas"].astype(str) + "h"
                 fig = px.pie(
                     pie, names="label", values="horas",
                     color_discrete_sequence=BRAND_PALETTE,
@@ -1210,6 +1219,7 @@ elif active_tab == "Disponibilidad":
                     "horas": "Horas pend.",
                     "tareas": "# Tareas",
                 })[["Colaborador", "Libre desde", "Horas pend.", "# Tareas"]]
+            table["Colaborador"] = _clean_collab_series(table["Colaborador"])
             st.markdown("<div class='detail-collab-table'></div>", unsafe_allow_html=True)
             st.dataframe(
                 table,
