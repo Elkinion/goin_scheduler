@@ -278,6 +278,7 @@ def _init_state() -> None:
     ss.setdefault("planned_resources", pd.DataFrame(columns=["resource_id", "resource_name"]))
     ss.setdefault("a_plan", pd.DataFrame())
     ss.setdefault("a_plan_baseline", pd.DataFrame(columns=["id", "datetime", "deadline"]))
+    ss.setdefault("archived_tasks", pd.DataFrame())
     ss.setdefault("log", "Listo. Primero sincroniza con ProjectCor.")
     ss.setdefault("selected_id", None)
     ss.setdefault("comments_df", empty_comments_df())
@@ -447,6 +448,7 @@ def _plot_gantt(tasks: pd.DataFrame, key: str) -> None:
     )
     fig.update_yaxes(autorange="reversed", title=None)
     fig.update_xaxes(title=None)
+    fig.update_traces(marker_line_color="white", marker_line_width=1.2)
     fig.update_layout(
         height=max(360, 28 * df["Colaborador"].nunique() + 120),
         margin=dict(l=10, r=10, t=10, b=10),
@@ -785,7 +787,7 @@ with st.sidebar:
 
     def _do_sync():
         try:
-            from domain.cor_client import build_a_from_cor
+            from domain.cor_client import build_a_from_cor, fetch_archived_tasks_since
             from domain.scheduler import add_sla_to_a, schedule_tasks_from_today
             refs = _load_reference_data()
             status_box = st.status("Sincronizando con ProjectCor…", expanded=True)
@@ -807,14 +809,27 @@ with st.sidebar:
                     a, refs["workers_allowed"],
                     anchor_date=st.session_state.get("sync_anchor_date") or dt.date.today(),
                 )
-                status_box.update(label=f"Sincronización lista · {len(res['a_plan'])} tareas", state="complete")
+                progress_msg.write("Descargando tareas archivadas desde 2026-01-01…")
+                archived_df = fetch_archived_tasks_since(
+                    dt.date(2026, 1, 1),
+                    workers_df=refs["workers_pods"],
+                    progress_cb=_on_progress,
+                )
+                status_box.update(
+                    label=f"Sincronización lista · {len(res['a_plan'])} tareas · {len(archived_df)} archivadas",
+                    state="complete",
+                )
             ap_new = res["a_plan"]
             st.session_state["a_plan"] = ap_new
+            st.session_state["archived_tasks"] = archived_df
             if not ap_new.empty:
                 st.session_state["a_plan_baseline"] = ap_new[["id", "datetime", "deadline"]].assign(id=lambda d: d["id"].astype(str))
             else:
                 st.session_state["a_plan_baseline"] = pd.DataFrame(columns=["id", "datetime", "deadline"])
-            _log(f"Sincronizado con ProjectCor. Tareas: {len(ap_new)}\nSiguiente paso: dibujar el cronograma.")
+            _log(
+                f"Sincronizado con ProjectCor. Tareas: {len(ap_new)} · archivadas desde 2026-01-01: {len(archived_df)}\n"
+                "Siguiente paso: dibujar el cronograma."
+            )
         except Exception as e:
             tb = traceback.format_exc(limit=6)
             _log(f"ERROR sincronización: {e}\n{tb}")
@@ -1339,17 +1354,18 @@ elif active_tab == "Estadísticas":
                 st.plotly_chart(fig, key="stats_emails")
 
         with col4:
-            st.markdown("**Distribución de duración (h) por tipo + skill**")
+            st.markdown("**Distribución de duración (días) por tipo + skill**")
             d = df.copy()
             d["combo"] = d["combo"].replace({"NA | NA": "SIN CLASIFICAR", "": "SIN CLASIFICAR"})
             d = d[d["dur_h"].notna() & (d["dur_h"] > 0)]
             if d.empty:
                 st.info("Sin datos.")
             else:
-                order = d.groupby("combo")["dur_h"].median().sort_values(ascending=False).index.tolist()
+                d["dur_d"] = d["dur_h"] / 24.0
+                order = d.groupby("combo")["dur_d"].median().sort_values(ascending=False).index.tolist()
                 name_col = "title" if "title" in d.columns else ("text" if "text" in d.columns else None)
                 fig = px.box(
-                    d, x="dur_h", y="combo",
+                    d, x="dur_d", y="combo",
                     color="combo",
                     color_discrete_sequence=BRAND_PALETTE,
                     category_orders={"combo": order},
@@ -1359,11 +1375,11 @@ elif active_tab == "Estadísticas":
                 )
                 if name_col:
                     fig.update_traces(
-                        hovertemplate="Tarea: %{customdata[0]}<br>Combo: %{y}<br>Duración: %{x:.1f} h<extra></extra>"
+                        hovertemplate="Tarea: %{customdata[0]}<br>Combo: %{y}<br>Duración: %{x:.2f} días<extra></extra>"
                     )
                 fig.update_layout(
                     height=max(380, 28 * len(order) + 80),
-                    xaxis_title="Duración (h)", yaxis_title="",
+                    xaxis_title="Duración (días)", yaxis_title="",
                     margin=dict(l=0, r=0, t=10, b=10),
                     showlegend=False,
                 )
