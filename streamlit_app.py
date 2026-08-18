@@ -809,9 +809,9 @@ with st.sidebar:
                     a, refs["workers_allowed"],
                     anchor_date=st.session_state.get("sync_anchor_date") or dt.date.today(),
                 )
-                progress_msg.write("Descargando tareas archivadas desde 2026-01-01…")
+                progress_msg.write("Descargando tareas archivadas desde 2026-05-01…")
                 archived_df = fetch_archived_tasks_since(
-                    dt.date(2026, 1, 1),
+                    dt.date(2026, 5, 1),
                     workers_df=refs["workers_pods"],
                     progress_cb=_on_progress,
                 )
@@ -827,7 +827,7 @@ with st.sidebar:
             else:
                 st.session_state["a_plan_baseline"] = pd.DataFrame(columns=["id", "datetime", "deadline"])
             _log(
-                f"Sincronizado con ProjectCor. Tareas: {len(ap_new)} · archivadas desde 2026-01-01: {len(archived_df)}\n"
+                f"Sincronizado con ProjectCor. Tareas: {len(ap_new)} · archivadas desde 2026-05-01: {len(archived_df)}\n"
                 "Siguiente paso: dibujar el cronograma."
             )
         except Exception as e:
@@ -1263,6 +1263,23 @@ elif active_tab == "Estadísticas":
     stats_is_final = stats_kind == "Plan final"
 
     source_df = st.session_state["planned_tasks"] if stats_is_final else st.session_state["a_plan"]
+    archived_df = st.session_state.get("archived_tasks", pd.DataFrame())
+    include_archived = st.checkbox(
+        "Incluir tareas archivadas (finalizadas desde 2026-05-01)",
+        value=True,
+        key="_stats_include_archived",
+        help="Suma las tareas archivadas/finalizadas al análisis. La duración se calcula desde datetime → deadline.",
+    )
+    if include_archived and archived_df is not None and not archived_df.empty:
+        arch = archived_df.copy()
+        arch["_is_archived"] = True
+        if source_df is None or source_df.empty:
+            source_df = arch
+        else:
+            src = source_df.copy()
+            src["_is_archived"] = False
+            source_df = pd.concat([src, arch], ignore_index=True, sort=False)
+
     if source_df is None or source_df.empty:
         st.info("Sincroniza para ver estadísticas.")
     else:
@@ -1292,12 +1309,13 @@ elif active_tab == "Estadísticas":
         base["skill_bucket"] = base["skill_main"].fillna("").astype(str)
         base["typeTask_name"] = base["typeTask_name"].fillna("").astype(str)
         base["combo"] = (base["typeTask_name"].replace("", "NA") + " | " + base["skill_bucket"].replace("", "NA"))
+        start = pd.to_datetime(base.get("datetime", ""), errors="coerce")
+        end = pd.to_datetime(base.get("deadline", ""), errors="coerce")
+        dur_from_dates = (end - start).dt.total_seconds() / 3600.0
         if stats_is_final and "duration" in base.columns:
-            base["dur_h"] = pd.to_numeric(base["duration"], errors="coerce")
+            base["dur_h"] = pd.to_numeric(base["duration"], errors="coerce").fillna(dur_from_dates)
         else:
-            start = pd.to_datetime(base.get("datetime", ""), errors="coerce")
-            end = pd.to_datetime(base.get("deadline", ""), errors="coerce")
-            base["dur_h"] = (end - start).dt.total_seconds() / 3600.0
+            base["dur_h"] = dur_from_dates
 
         df = apply_gantt_filters(
             base,
