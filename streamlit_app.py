@@ -787,7 +787,7 @@ with st.sidebar:
 
     def _do_sync():
         try:
-            from domain.cor_client import build_a_from_cor, fetch_archived_tasks_since
+            from domain.cor_client import fetch_a_plan_and_archived
             from domain.scheduler import add_sla_to_a, schedule_tasks_from_today
             refs = _load_reference_data()
             status_box = st.status("Sincronizando con ProjectCor…", expanded=True)
@@ -801,19 +801,17 @@ with st.sidebar:
                         pct = max(0, min(100, int(done * 100 / total)))
                         progress_bar.progress(pct)
 
-                a = build_a_from_cor(workers_df=refs["workers_pods"], progress_cb=_on_progress)
+                a, archived_df = fetch_a_plan_and_archived(
+                    dt.date(2026, 5, 1),
+                    workers_df=refs["workers_pods"],
+                    progress_cb=_on_progress,
+                )
                 progress_msg.write("Calculando SLA y cronograma…")
                 progress_bar.progress(100)
                 a = add_sla_to_a(a, refs["sla"])
                 res = schedule_tasks_from_today(
                     a, refs["workers_allowed"],
                     anchor_date=st.session_state.get("sync_anchor_date") or dt.date.today(),
-                )
-                progress_msg.write("Descargando tareas archivadas desde 2026-05-01…")
-                archived_df = fetch_archived_tasks_since(
-                    dt.date(2026, 5, 1),
-                    workers_df=refs["workers_pods"],
-                    progress_cb=_on_progress,
                 )
                 status_box.update(
                     label=f"Sincronización lista · {len(res['a_plan'])} tareas · {len(archived_df)} archivadas",
@@ -1330,6 +1328,42 @@ elif active_tab == "Estadísticas":
         if _tt != "Todas" and "typeTask_name" in df.columns:
             _mask = df["typeTask_name"].fillna("").astype(str).str.contains("creativ", case=False, na=False)
             df = df[_mask] if _tt == "Creatividad" else df[~_mask]
+
+        if "status" in df.columns:
+            status_codes_present = [
+                c for c in STATUS_DISPLAY.keys()
+                if c in set(df["status"].dropna().astype(str))
+            ]
+            seen = set()
+            status_codes_present = [c for c in status_codes_present if not (c in seen or seen.add(c))]
+            status_labels = [STATUS_DISPLAY.get(c, c) for c in status_codes_present]
+            label_to_code = {STATUS_DISPLAY.get(c, c): c for c in status_codes_present}
+            if status_labels:
+                default_labels = st.session_state.get("_stats_status_filter", status_labels)
+                default_labels = [l for l in default_labels if l in status_labels] or status_labels
+                pills_fn = getattr(st, "pills", None)
+                if callable(pills_fn):
+                    sel_labels = pills_fn(
+                        "Estados incluidos (click para ocultar)",
+                        options=status_labels,
+                        default=default_labels,
+                        selection_mode="multi",
+                        key="_stats_status_filter",
+                    )
+                else:
+                    sel_labels = st.multiselect(
+                        "Estados incluidos (quita para ocultar)",
+                        options=status_labels,
+                        default=default_labels,
+                        key="_stats_status_filter",
+                    )
+                if sel_labels is None:
+                    sel_labels = []
+                sel_codes = {label_to_code[l] for l in sel_labels if l in label_to_code}
+                if sel_codes:
+                    df = df[df["status"].astype(str).isin(sel_codes)]
+                else:
+                    df = df.iloc[0:0]
 
         col1, col2 = st.columns(2)
         with col1:

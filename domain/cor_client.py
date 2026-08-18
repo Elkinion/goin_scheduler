@@ -472,18 +472,44 @@ def _rows_to_tasks_df(
     return out
 
 
+def _list_statuses_parallel(
+    token: str,
+    statuses: tuple[str, ...],
+    max_workers: int = 6,
+    per_page: int = 200,
+    progress_cb=None,
+) -> dict[str, list[dict]]:
+    """Lista /tasks para varios statuses en paralelo. Cada status sigue paginando secuencial."""
+    result: dict[str, list[dict]] = {s: [] for s in statuses}
+    if not statuses:
+        return result
+    total = len(statuses)
+    done = 0
+    if progress_cb:
+        progress_cb(f"Listando {total} statuses en paralelo…", 0, total)
+    workers = min(max_workers, total)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {ex.submit(get_tasks_by_status_paged, token, s, per_page): s for s in statuses}
+        for fut in as_completed(futures):
+            s = futures[fut]
+            try:
+                result[s] = fut.result()
+            except Exception:
+                result[s] = []
+            done += 1
+            if progress_cb:
+                progress_cb(f"Listado status={s} ({done}/{total})", done, total)
+    return result
+
+
 def build_a_from_cor(
     workers_df: pd.DataFrame | None = None,
     preferred_lang: str = "es",
     progress_cb=None,
 ) -> pd.DataFrame:
     token = get_token()
-
-    all_rows: list[dict] = []
-    for i, status in enumerate(STATUSES_NO_FINAL):
-        if progress_cb:
-            progress_cb(f"Descargando status={status}", i, len(STATUSES_NO_FINAL))
-        all_rows.extend(get_tasks_by_status_paged(token, status))
+    rows_by_status = _list_statuses_parallel(token, STATUSES_NO_FINAL, progress_cb=progress_cb)
+    all_rows: list[dict] = [r for s in STATUSES_NO_FINAL for r in rows_by_status.get(s, [])]
 
     out = _rows_to_tasks_df(all_rows, workers_df, preferred_lang, token, progress_cb)
     if out.empty:
@@ -493,29 +519,9 @@ def build_a_from_cor(
     return out
 
 
-def fetch_archived_tasks_since(
-    since_date,
-    workers_df: pd.DataFrame | None = None,
-    preferred_lang: str = "es",
-    progress_cb=None,
-) -> pd.DataFrame:
-    """Trae tareas finalizadas/archivadas con datetime o deadline >= since_date.
-
-    Se descargan por status ("finalizada") y también los archivados que
-    aparecen dentro de statuses no finales. Se filtran por fecha ANTES de
-    enriquecer con detalles para minimizar llamadas al endpoint /tasks/{id}.
-    """
+def _filter_archived_rows(all_rows: list[dict], since_date) -> list[dict]:
     since_ts = pd.Timestamp(since_date)
-    token = get_token()
-
-    all_rows: list[dict] = []
-    statuses = tuple(STATUSES_FINAL) + tuple(STATUSES_NO_FINAL)
-    for i, status in enumerate(statuses):
-        if progress_cb:
-            progress_cb(f"Descargando archivadas status={status}", i, len(statuses))
-        all_rows.extend(get_tasks_by_status_paged(token, status))
-    if not all_rows:
-        return pd.DataFrame()
+    cutoff = since_ts.tz_localize("UTC") if since_ts.tzinfo is None else since_ts
 
     def _row_matches(r: dict) -> bool:
         is_final = str(r.get("status") or "").strip().lower() == "finalizada"
@@ -524,17 +530,72 @@ def fetch_archived_tasks_since(
             return False
         dt_val = pd.to_datetime(r.get("datetime"), errors="coerce", utc=True)
         dl_val = pd.to_datetime(r.get("deadline"), errors="coerce", utc=True)
-        cutoff = since_ts.tz_localize("UTC") if since_ts.tzinfo is None else since_ts
         cand = [x for x in (dt_val, dl_val) if pd.notna(x)]
         if not cand:
             return False
         return max(cand) >= cutoff
 
-    filtered_rows = [r for r in all_rows if _row_matches(r)]
+    return [r for r in all_rows if _row_matches(r)]
+
+
+def fetch_archived_tasks_since(
+    since_date,
+    workers_df: pd.DataFrame | None = None,
+    preferred_lang: str = "es",
+    progress_cb=None,
+    prefetched_rows: list[dict] | None = None,
+) -> pd.DataFrame:
+    """Trae tareas finalizadas/archivadas con datetime o deadline >= since_date.
+
+    Si `prefetched_rows` viene, se usa esa lista (rows crudos de listados previos)
+    y solo se descargan los statuses FINAL faltantes. Si no, se listan todos.
+    """
+    token = get_token()
+
+    if prefetched_rows is None:
+        rows_by_status = _list_statuses_parallel(
+            token, tuple(STATUSES_FINAL) + tuple(STATUSES_NO_FINAL), progress_cb=progress_cb,
+        )
+        all_rows = [r for rows in rows_by_status.values() for r in rows]
+    else:
+        final_by_status = _list_statuses_parallel(token, STATUSES_FINAL, progress_cb=progress_cb)
+        all_rows = list(prefetched_rows) + [r for rows in final_by_status.values() for r in rows]
+
+    filtered_rows = _filter_archived_rows(all_rows, since_date)
     if not filtered_rows:
         return pd.DataFrame()
-
     return _rows_to_tasks_df(filtered_rows, workers_df, preferred_lang, token, progress_cb)
+
+
+def fetch_a_plan_and_archived(
+    since_date,
+    workers_df: pd.DataFrame | None = None,
+    preferred_lang: str = "es",
+    progress_cb=None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Trae en un solo pase paralelo: (a_plan sin archivadas, archivadas desde since_date).
+
+    Ahorra un listado completo respecto a llamar build_a_from_cor + fetch_archived_tasks_since
+    por separado, y aprovecha el cache de detalles al enriquecer ambos DataFrames.
+    """
+    token = get_token()
+    statuses = tuple(STATUSES_NO_FINAL) + tuple(STATUSES_FINAL)
+    rows_by_status = _list_statuses_parallel(token, statuses, progress_cb=progress_cb)
+
+    no_final_rows = [r for s in STATUSES_NO_FINAL for r in rows_by_status.get(s, [])]
+    final_rows = [r for s in STATUSES_FINAL for r in rows_by_status.get(s, [])]
+
+    a_df = _rows_to_tasks_df(no_final_rows, workers_df, preferred_lang, token, progress_cb)
+    if not a_df.empty and "archived" in a_df.columns:
+        a_df = a_df[~a_df["archived"].astype(bool)].reset_index(drop=True)
+
+    archived_rows = _filter_archived_rows(no_final_rows + final_rows, since_date)
+    if archived_rows:
+        arch_df = _rows_to_tasks_df(archived_rows, workers_df, preferred_lang, token, progress_cb)
+    else:
+        arch_df = pd.DataFrame()
+
+    return a_df, arch_df
 
 
 def patch_task_dates(token: str, task_id: str, datetime_utc: str, deadline_utc: str) -> dict:
